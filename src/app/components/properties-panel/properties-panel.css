@@ -1,0 +1,54 @@
+.properties-panel {
+  background-color: #f8f9fa;
+  border-left: 1px solid #dee2e6;
+  padding: 1rem;
+  min-width: 250px;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.properties-panel h3 {
+  margin: 0 0 1rem 0;
+  color: #2c3e50;
+  font-size: 1.1rem;
+  border-bottom: 1px solid #dee2e6;
+  padding-bottom: 0.5rem;
+}
+
+.property-group {
+  margin-bottom: 1rem;
+}
+
+.property-group label {
+  display: block;
+  font-weight: 500;
+  color: #495057;
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.property-value {
+  color: #6c757d;
+  font-style: italic;
+}
+
+.position-inputs,
+.dimension-inputs {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.position-inputs input,
+.dimension-inputs input {
+  flex: 1;
+  padding: 0.5rem;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  font-size: 0.9rem;
+}
+
+.position-inputs input:disabled,
+.dimension-inputs input:disabled {
+  background-color: #e9ecef;
+  color: #6c757d;
+}

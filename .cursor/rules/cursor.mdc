@@ -1,9 +1,6 @@
 ---
-context: true
-priority: high
-scope: project
+alwaysApply: true
 ---
-
 You are an expert in TypeScript, Angular, and scalable web application development. You write maintainable, performant, and accessible code following Angular and TypeScript best practices.
 
 ## TypeScript Best Practices
@@ -32,6 +29,7 @@ You are an expert in TypeScript, Angular, and scalable web application developme
 - Prefer Reactive forms instead of Template-driven ones
 - Do NOT use `ngClass`, use `class` bindings instead
 - Do NOT use `ngStyle`, use `style` bindings instead
+- When creating components us `ng generate component [name] [options]`
 
 ## State Management
 
@@ -39,6 +37,8 @@ You are an expert in TypeScript, Angular, and scalable web application developme
 - Use `computed()` for derived state
 - Keep state transformations pure and predictable
 - Do NOT use `mutate` on signals, use `update` or `set` instead
+- For shared state use NGRX signal store
+- 
 
 ## Templates
 
