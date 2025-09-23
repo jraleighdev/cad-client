@@ -1,21 +1,27 @@
-<div class="properties-panel">
+<div class="properties-panel" [style.width.px]="panelWidth()">
+  <div class="resize-handle" 
+       (mousedown)="onResizeStart($event)"
+       [class.resizing]="isResizing()">
+  </div>
   <h3>Properties</h3>
-  <div class="property-group">
-    <label>Object Type:</label>
-    <span class="property-value">None Selected</span>
-  </div>
-  <div class="property-group">
-    <label>Position:</label>
-    <div class="position-inputs">
-      <input type="number" placeholder="X" disabled>
-      <input type="number" placeholder="Y" disabled>
+  <div class="properties-content">
+    <div class="property-group">
+      <label>Object Type:</label>
+      <span class="property-value">None Selected</span>
     </div>
-  </div>
-  <div class="property-group">
-    <label>Dimensions:</label>
-    <div class="dimension-inputs">
-      <input type="number" placeholder="Width" disabled>
-      <input type="number" placeholder="Height" disabled>
+    <div class="property-group">
+      <label>Position:</label>
+      <div class="position-inputs" [class.narrow]="isNarrow()">
+        <input type="number" placeholder="X" disabled>
+        <input type="number" placeholder="Y" disabled>
+      </div>
+    </div>
+    <div class="property-group">
+      <label>Dimensions:</label>
+      <div class="dimension-inputs" [class.narrow]="isNarrow()">
+        <input type="number" placeholder="Width" disabled>
+        <input type="number" placeholder="Height" disabled>
+      </div>
     </div>
   </div>
 </div>

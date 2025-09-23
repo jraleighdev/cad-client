@@ -1,22 +1,26 @@
 .toolbar {
   background-color: #f8f9fa;
-  border-bottom: 1px solid #dee2e6;
-  padding: 0.5rem 1rem;
+  padding: 0.5rem;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 1rem;
+  gap: 0.5rem;
+  height: 100%;
+  width: 100%;
 }
 
 .tool-group {
   display: flex;
+  flex-direction: column;
   gap: 0.25rem;
+  width: 100%;
 }
 
 .tool-separator {
-  width: 1px;
-  height: 2rem;
+  width: 100%;
+  height: 1px;
   background-color: #dee2e6;
-  margin: 0 0.5rem;
+  margin: 0.5rem 0;
 }
 
 .tool-button {

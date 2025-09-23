@@ -2,9 +2,13 @@
   background-color: #f8f9fa;
   border-left: 1px solid #dee2e6;
   padding: 1rem;
-  min-width: 250px;
+  min-width: 200px;
+  max-width: 600px;
   height: 100%;
-  overflow-y: auto;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  position: relative;
 }
 
 .properties-panel h3 {
@@ -13,6 +17,13 @@
   font-size: 1.1rem;
   border-bottom: 1px solid #dee2e6;
   padding-bottom: 0.5rem;
+  flex-shrink: 0;
+}
+
+.properties-content {
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 0.5rem;
 }
 
 .property-group {
@@ -38,6 +49,19 @@
   gap: 0.5rem;
 }
 
+/* Stack inputs vertically when panel is narrow */
+.position-inputs.narrow,
+.dimension-inputs.narrow {
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.position-inputs.narrow input,
+.dimension-inputs.narrow input {
+  width: 100%;
+  flex: none;
+}
+
 .position-inputs input,
 .dimension-inputs input {
   flex: 1;
@@ -51,4 +75,35 @@
 .dimension-inputs input:disabled {
   background-color: #e9ecef;
   color: #6c757d;
+}
+
+/* Resize handle */
+.resize-handle {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background-color: transparent;
+  cursor: col-resize;
+  z-index: 10;
+  transition: background-color 0.2s;
+}
+
+.resize-handle:hover {
+  background-color: #007bff;
+}
+
+.resize-handle.resizing {
+  background-color: #007bff;
+}
+
+.resize-handle::before {
+  content: '';
+  position: absolute;
+  left: -2px;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  background-color: transparent;
 }

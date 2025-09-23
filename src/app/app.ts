@@ -1,9 +1,19 @@
 import { Component, signal } from '@angular/core';
-import { RouterOutlet } from '@angular/router';
+import { HeaderComponent } from './components/header/header';
+import { FooterComponent } from './components/footer/footer';
+import { CanvasComponent } from './components/canvas/canvas';
+import { PropertiesPanelComponent } from './components/properties-panel/properties-panel';
+import { ToolbarComponent } from './components/toolbar/toolbar';
 
 @Component({
   selector: 'app-root',
-  imports: [RouterOutlet],
+  imports: [
+    HeaderComponent,
+    FooterComponent,
+    CanvasComponent,
+    PropertiesPanelComponent,
+    ToolbarComponent
+  ],
   templateUrl: './app.html',
   styleUrl: './app.css'
 })
