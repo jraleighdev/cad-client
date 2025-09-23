@@ -1,4 +1,4 @@
-import { Component, ChangeDetectionStrategy } from '@angular/core';
+import { Component, ChangeDetectionStrategy, signal, output } from '@angular/core';
 
 @Component({
   selector: 'app-toolbar',
@@ -8,5 +8,12 @@ import { Component, ChangeDetectionStrategy } from '@angular/core';
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class ToolbarComponent {
+  protected readonly selectedTool = signal('select');
+  
+  toolSelected = output<string>();
 
+  protected selectTool(tool: string) {
+    this.selectedTool.set(tool);
+    this.toolSelected.emit(tool);
+  }
 }

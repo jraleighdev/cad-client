@@ -1,4 +1,4 @@
-import { Component, signal } from '@angular/core';
+import { Component, signal, ViewChild } from '@angular/core';
 import { HeaderComponent } from './components/header/header';
 import { FooterComponent } from './components/footer/footer';
 import { CanvasComponent } from './components/canvas/canvas';
@@ -18,5 +18,13 @@ import { ToolbarComponent } from './components/toolbar/toolbar';
   styleUrl: './app.css'
 })
 export class App {
+  @ViewChild('canvasComponent') canvasComponent!: CanvasComponent;
+  
   protected readonly title = signal('cad-client');
+
+  protected onToolSelected(tool: string) {
+    if (this.canvasComponent) {
+      this.canvasComponent.setTool(tool);
+    }
+  }
 }

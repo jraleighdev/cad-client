@@ -1,5 +1,11 @@
 <div class="canvas-container">
-  <canvas #canvasElement class="drawing-canvas"></canvas>
+  <canvas #canvasElement 
+          class="drawing-canvas"
+          (mousedown)="onMouseDown($event)"
+          (mousemove)="onMouseMove($event)"
+          (mouseup)="onMouseUp($event)"
+          (mouseleave)="onMouseUp($event)">
+  </canvas>
   <div class="canvas-overlay">
     <div class="grid-overlay"></div>
   </div>

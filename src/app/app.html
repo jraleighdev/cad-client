@@ -6,12 +6,12 @@
   <div class="main-content">
     <!-- Toolbar on the left -->
     <div class="left-panel">
-      <app-toolbar></app-toolbar>
+      <app-toolbar (toolSelected)="onToolSelected($event)"></app-toolbar>
     </div>
     
     <!-- Canvas in the center -->
     <div class="center-panel">
-      <app-canvas></app-canvas>
+      <app-canvas #canvasComponent></app-canvas>
     </div>
     
     <!-- Properties panel on the right -->

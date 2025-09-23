@@ -1,15 +1,27 @@
 <div class="toolbar">
   <div class="tool-group">
-    <button class="tool-button active" title="Select Tool">
+    <button class="tool-button" 
+            [class.active]="selectedTool() === 'select'"
+            (click)="selectTool('select')"
+            title="Select Tool">
       <span class="tool-icon">↖</span>
     </button>
-    <button class="tool-button" title="Line Tool">
+    <button class="tool-button" 
+            [class.active]="selectedTool() === 'line'"
+            (click)="selectTool('line')"
+            title="Line Tool">
       <span class="tool-icon">/</span>
     </button>
-    <button class="tool-button" title="Rectangle Tool">
+    <button class="tool-button" 
+            [class.active]="selectedTool() === 'rectangle'"
+            (click)="selectTool('rectangle')"
+            title="Rectangle Tool">
       <span class="tool-icon">□</span>
     </button>
-    <button class="tool-button" title="Circle Tool">
+    <button class="tool-button" 
+            [class.active]="selectedTool() === 'circle'"
+            (click)="selectTool('circle')"
+            title="Circle Tool">
       <span class="tool-icon">○</span>
     </button>
   </div>
