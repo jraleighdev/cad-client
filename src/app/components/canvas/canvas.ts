@@ -135,6 +135,7 @@ export class CanvasComponent implements AfterViewInit {
         this.isResizing.set(true);
         this.resizeHandle.set(handle);
         this.startPoint = point;
+        this.setCanvasCursor('grabbing');
         return;
       }
       
@@ -199,9 +200,11 @@ export class CanvasComponent implements AfterViewInit {
     if (this.isResizing() && this.selectedEntity()) {
       // Handle resizing selected entity
       this.resizeSelectedEntity(point);
+      this.setCanvasCursor('grabbing');
     } else if (this.isDragging() && this.selectedEntity()) {
       // Handle dragging selected entity
       this.moveSelectedEntity(point);
+      this.setCanvasCursor('move');
     } else if (this.isDrawing() && this.startPoint) {
       // Handle drawing preview
       this.redrawCanvas();
@@ -214,6 +217,14 @@ export class CanvasComponent implements AfterViewInit {
       } else if (tool === 'circle') {
         this.drawPreviewCircle(this.startPoint, point);
       }
+    } else {
+      // Update cursor when hovering over handles (not dragging/resizing)
+      const handle = this.getHandleAtPoint(point);
+      if (handle) {
+        this.setCanvasCursor(this.cursorForHandle(handle));
+      } else {
+        this.setCanvasCursor('crosshair');
+      }
     }
   }
 
@@ -222,10 +233,12 @@ export class CanvasComponent implements AfterViewInit {
       // Finish resizing
       this.isResizing.set(false);
       this.resizeHandle.set(null);
+      this.setCanvasCursor('crosshair');
     } else if (this.isDragging()) {
       // Finish dragging
       this.isDragging.set(false);
       this.dragOffset.set(null);
+      this.setCanvasCursor('crosshair');
     } else if (this.isDrawing() && this.startPoint) {
       // Finish drawing
       const rect = this.canvasElement.nativeElement.getBoundingClientRect();
@@ -684,6 +697,35 @@ export class CanvasComponent implements AfterViewInit {
       Math.pow(point.x - handlePoint.x, 2) + Math.pow(point.y - handlePoint.y, 2)
     );
     return distance <= this.handleSize;
+  }
+
+  private cursorForHandle(handle: string): string {
+    switch (handle) {
+      case 'rect-top-left':
+      case 'rect-bottom-right':
+        return 'nwse-resize';
+      case 'rect-top-right':
+      case 'rect-bottom-left':
+        return 'nesw-resize';
+      case 'circle-left':
+      case 'circle-right':
+        return 'ew-resize';
+      case 'circle-top':
+      case 'circle-bottom':
+        return 'ns-resize';
+      case 'line-start':
+      case 'line-end':
+        return 'grab';
+      default:
+        return 'crosshair';
+    }
+  }
+
+  private setCanvasCursor(cursor: string) {
+    const canvas = this.canvasElement?.nativeElement;
+    if (canvas) {
+      canvas.style.cursor = cursor;
+    }
   }
 
   private resizeSelectedEntity(point: Point) {
