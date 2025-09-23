@@ -57,6 +57,11 @@ export class CanvasComponent implements AfterViewInit {
   protected readonly isDragging = signal(false);
   protected readonly dragOffset = signal<Point | null>(null);
   
+  // Resize handle state
+  protected readonly isResizing = signal(false);
+  protected readonly resizeHandle = signal<string | null>(null);
+  protected readonly handleSize = 8; // Size of resize handles in pixels
+  
   private ctx: CanvasRenderingContext2D | null = null;
   private startPoint: Point | null = null;
 
@@ -124,6 +129,15 @@ export class CanvasComponent implements AfterViewInit {
     const point = { x, y };
     
     if (tool === 'select') {
+      // Check if clicking on a resize handle first
+      const handle = this.getHandleAtPoint(point);
+      if (handle) {
+        this.isResizing.set(true);
+        this.resizeHandle.set(handle);
+        this.startPoint = point;
+        return;
+      }
+      
       // Handle selection and dragging
       const entity = this.findEntityAtPoint(point);
       this.selectedEntity.set(entity);
@@ -182,7 +196,10 @@ export class CanvasComponent implements AfterViewInit {
     const y = event.clientY - rect.top;
     const point = { x, y };
     
-    if (this.isDragging() && this.selectedEntity()) {
+    if (this.isResizing() && this.selectedEntity()) {
+      // Handle resizing selected entity
+      this.resizeSelectedEntity(point);
+    } else if (this.isDragging() && this.selectedEntity()) {
       // Handle dragging selected entity
       this.moveSelectedEntity(point);
     } else if (this.isDrawing() && this.startPoint) {
@@ -201,7 +218,11 @@ export class CanvasComponent implements AfterViewInit {
   }
 
   protected onMouseUp(event: MouseEvent) {
-    if (this.isDragging()) {
+    if (this.isResizing()) {
+      // Finish resizing
+      this.isResizing.set(false);
+      this.resizeHandle.set(null);
+    } else if (this.isDragging()) {
       // Finish dragging
       this.isDragging.set(false);
       this.dragOffset.set(null);
@@ -572,5 +593,205 @@ export class CanvasComponent implements AfterViewInit {
     }
 
     this.ctx.setLineDash([]);
+    
+    // Draw resize handles
+    this.drawResizeHandles(selected, entity);
+  }
+
+  private drawResizeHandles(selected: {type: 'line' | 'rectangle' | 'circle', id: string}, entity: Line | Rectangle | Circle) {
+    if (!this.ctx) return;
+
+    this.ctx.fillStyle = '#007bff';
+    this.ctx.strokeStyle = '#ffffff';
+    this.ctx.lineWidth = 1;
+
+    if (selected.type === 'line') {
+      const line = entity as Line;
+      this.drawHandle(line.start.x, line.start.y, 'line-start');
+      this.drawHandle(line.end.x, line.end.y, 'line-end');
+    } else if (selected.type === 'rectangle') {
+      const rectangle = entity as Rectangle;
+      const minX = Math.min(rectangle.start.x, rectangle.end.x);
+      const maxX = Math.max(rectangle.start.x, rectangle.end.x);
+      const minY = Math.min(rectangle.start.y, rectangle.end.y);
+      const maxY = Math.max(rectangle.start.y, rectangle.end.y);
+      
+      // Corner handles
+      this.drawHandle(minX, minY, 'rect-top-left');
+      this.drawHandle(maxX, minY, 'rect-top-right');
+      this.drawHandle(minX, maxY, 'rect-bottom-left');
+      this.drawHandle(maxX, maxY, 'rect-bottom-right');
+    } else if (selected.type === 'circle') {
+      const circle = entity as Circle;
+      const { x: cx, y: cy } = circle.center;
+      const r = circle.radius;
+      // Axis-aligned handles: left/right (x-axis), top/bottom (y-axis)
+      this.drawHandle(cx - r, cy, 'circle-left');
+      this.drawHandle(cx + r, cy, 'circle-right');
+      this.drawHandle(cx, cy - r, 'circle-top');
+      this.drawHandle(cx, cy + r, 'circle-bottom');
+    }
+  }
+
+  private drawHandle(x: number, y: number, handleId: string) {
+    if (!this.ctx) return;
+
+    const size = this.handleSize;
+    const halfSize = size / 2;
+
+    // Draw handle
+    this.ctx.fillRect(x - halfSize, y - halfSize, size, size);
+    this.ctx.strokeRect(x - halfSize, y - halfSize, size, size);
+  }
+
+  private getHandleAtPoint(point: Point): string | null {
+    const selected = this.selectedEntity();
+    if (!selected) return null;
+
+    const entity = this.getEntityData(selected);
+    if (!entity) return null;
+
+    if (selected.type === 'line') {
+      const line = entity as Line;
+      if (this.isPointNearHandle(point, line.start)) return 'line-start';
+      if (this.isPointNearHandle(point, line.end)) return 'line-end';
+    } else if (selected.type === 'rectangle') {
+      const rectangle = entity as Rectangle;
+      const minX = Math.min(rectangle.start.x, rectangle.end.x);
+      const maxX = Math.max(rectangle.start.x, rectangle.end.x);
+      const minY = Math.min(rectangle.start.y, rectangle.end.y);
+      const maxY = Math.max(rectangle.start.y, rectangle.end.y);
+      
+      if (this.isPointNearHandle(point, { x: minX, y: minY })) return 'rect-top-left';
+      if (this.isPointNearHandle(point, { x: maxX, y: minY })) return 'rect-top-right';
+      if (this.isPointNearHandle(point, { x: minX, y: maxY })) return 'rect-bottom-left';
+      if (this.isPointNearHandle(point, { x: maxX, y: maxY })) return 'rect-bottom-right';
+    } else if (selected.type === 'circle') {
+      const circle = entity as Circle;
+      const { x: cx, y: cy } = circle.center;
+      const r = circle.radius;
+      if (this.isPointNearHandle(point, { x: cx - r, y: cy })) return 'circle-left';
+      if (this.isPointNearHandle(point, { x: cx + r, y: cy })) return 'circle-right';
+      if (this.isPointNearHandle(point, { x: cx, y: cy - r })) return 'circle-top';
+      if (this.isPointNearHandle(point, { x: cx, y: cy + r })) return 'circle-bottom';
+    }
+
+    return null;
+  }
+
+  private isPointNearHandle(point: Point, handlePoint: Point): boolean {
+    const distance = Math.sqrt(
+      Math.pow(point.x - handlePoint.x, 2) + Math.pow(point.y - handlePoint.y, 2)
+    );
+    return distance <= this.handleSize;
+  }
+
+  private resizeSelectedEntity(point: Point) {
+    const selected = this.selectedEntity();
+    if (!selected) return;
+
+    const handle = this.resizeHandle();
+    if (!handle) return;
+
+    if (selected.type === 'line') {
+      this.resizeLine(selected.id, handle, point);
+    } else if (selected.type === 'rectangle') {
+      this.resizeRectangle(selected.id, handle, point);
+    } else if (selected.type === 'circle') {
+      this.resizeCircle(selected.id, handle, point);
+    }
+
+    this.redrawCanvas();
+  }
+
+  private resizeLine(lineId: string, handle: string, point: Point) {
+    if (handle === 'line-start') {
+      this.lines.update(lines => 
+        lines.map(line => 
+          line.id === lineId 
+            ? { ...line, start: point }
+            : line
+        )
+      );
+    } else if (handle === 'line-end') {
+      this.lines.update(lines => 
+        lines.map(line => 
+          line.id === lineId 
+            ? { ...line, end: point }
+            : line
+        )
+      );
+    }
+  }
+
+  private resizeRectangle(rectangleId: string, handle: string, point: Point) {
+    this.rectangles.update(rectangles => 
+      rectangles.map(rectangle => {
+        if (rectangle.id !== rectangleId) return rectangle;
+
+        const currentMinX = Math.min(rectangle.start.x, rectangle.end.x);
+        const currentMaxX = Math.max(rectangle.start.x, rectangle.end.x);
+        const currentMinY = Math.min(rectangle.start.y, rectangle.end.y);
+        const currentMaxY = Math.max(rectangle.start.y, rectangle.end.y);
+
+        let newStart = { ...rectangle.start };
+        let newEnd = { ...rectangle.end };
+
+        switch (handle) {
+          case 'rect-top-left':
+            newStart = { x: currentMinX, y: currentMinY };
+            newEnd = { x: currentMaxX, y: currentMaxY };
+            newStart = point;
+            break;
+          case 'rect-top-right':
+            newStart = { x: currentMinX, y: currentMinY };
+            newEnd = { x: currentMaxX, y: currentMaxY };
+            newEnd = { x: point.x, y: newStart.y };
+            newStart = { x: newStart.x, y: point.y };
+            break;
+          case 'rect-bottom-left':
+            newStart = { x: currentMinX, y: currentMinY };
+            newEnd = { x: currentMaxX, y: currentMaxY };
+            newStart = { x: point.x, y: newStart.y };
+            newEnd = { x: newEnd.x, y: point.y };
+            break;
+          case 'rect-bottom-right':
+            newStart = { x: currentMinX, y: currentMinY };
+            newEnd = { x: currentMaxX, y: currentMaxY };
+            newEnd = point;
+            break;
+        }
+
+        return { ...rectangle, start: newStart, end: newEnd };
+      })
+    );
+  }
+
+  private resizeCircle(circleId: string, handle: string, point: Point) {
+    this.circles.update(circles => 
+      circles.map(circle => {
+        if (circle.id !== circleId) return circle;
+
+        const { x: cx, y: cy } = circle.center;
+
+        let newRadius = circle.radius;
+        switch (handle) {
+          case 'circle-left':
+            newRadius = Math.abs(point.x - cx);
+            break;
+          case 'circle-right':
+            newRadius = Math.abs(point.x - cx);
+            break;
+          case 'circle-top':
+            newRadius = Math.abs(point.y - cy);
+            break;
+          case 'circle-bottom':
+            newRadius = Math.abs(point.y - cy);
+            break;
+        }
+
+        return { ...circle, radius: Math.max(0, newRadius) };
+      })
+    );
   }
 }
