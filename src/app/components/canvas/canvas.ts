@@ -22,6 +22,15 @@ export interface Rectangle {
   fillColor?: string;
 }
 
+export interface Circle {
+  id: string;
+  center: Point;
+  radius: number;
+  color: string;
+  width: number;
+  fillColor?: string;
+}
+
 @Component({
   selector: 'app-canvas',
   imports: [],
@@ -38,8 +47,10 @@ export class CanvasComponent implements AfterViewInit {
   protected readonly currentTool = signal('select');
   protected readonly lines = signal<Line[]>([]);
   protected readonly rectangles = signal<Rectangle[]>([]);
+  protected readonly circles = signal<Circle[]>([]);
   protected readonly currentLine = signal<Partial<Line> | null>(null);
   protected readonly currentRectangle = signal<Partial<Rectangle> | null>(null);
+  protected readonly currentCircle = signal<Partial<Circle> | null>(null);
   
   private ctx: CanvasRenderingContext2D | null = null;
   private startPoint: Point | null = null;
@@ -102,7 +113,7 @@ export class CanvasComponent implements AfterViewInit {
 
   protected onMouseDown(event: MouseEvent) {
     const tool = this.currentTool();
-    if (tool !== 'line' && tool !== 'rectangle') return;
+    if (tool !== 'line' && tool !== 'rectangle' && tool !== 'circle') return;
     
     const rect = this.canvasElement.nativeElement.getBoundingClientRect();
     const x = event.clientX - rect.left;
@@ -128,6 +139,15 @@ export class CanvasComponent implements AfterViewInit {
         fillColor: 'transparent'
       };
       this.currentRectangle.set(newRectangle);
+    } else if (tool === 'circle') {
+      const newCircle: Partial<Circle> = {
+        id: Date.now().toString(),
+        center: { x, y },
+        color: '#000000',
+        width: 2,
+        fillColor: 'transparent'
+      };
+      this.currentCircle.set(newCircle);
     }
   }
 
@@ -145,6 +165,8 @@ export class CanvasComponent implements AfterViewInit {
       this.drawPreviewLine(this.startPoint, { x, y });
     } else if (tool === 'rectangle') {
       this.drawPreviewRectangle(this.startPoint, { x, y });
+    } else if (tool === 'circle') {
+      this.drawPreviewCircle(this.startPoint, { x, y });
     }
   }
 
@@ -178,6 +200,20 @@ export class CanvasComponent implements AfterViewInit {
       };
       this.rectangles.update(rectangles => [...rectangles, completedRectangle]);
       this.currentRectangle.set(null);
+    } else if (tool === 'circle') {
+      const radius = Math.sqrt(
+        Math.pow(x - this.startPoint.x, 2) + Math.pow(y - this.startPoint.y, 2)
+      );
+      const completedCircle: Circle = {
+        id: this.currentCircle()?.id || Date.now().toString(),
+        center: this.startPoint,
+        radius: radius,
+        color: this.currentCircle()?.color || '#000000',
+        width: this.currentCircle()?.width || 2,
+        fillColor: this.currentCircle()?.fillColor || 'transparent'
+      };
+      this.circles.update(circles => [...circles, completedCircle]);
+      this.currentCircle.set(null);
     }
     
     this.isDrawing.set(false);
@@ -215,6 +251,24 @@ export class CanvasComponent implements AfterViewInit {
     this.ctx.setLineDash([]);
   }
 
+  private drawPreviewCircle(center: Point, end: Point) {
+    if (!this.ctx) return;
+    
+    const radius = Math.sqrt(
+      Math.pow(end.x - center.x, 2) + Math.pow(end.y - center.y, 2)
+    );
+    
+    this.ctx.strokeStyle = '#000000';
+    this.ctx.lineWidth = 2;
+    this.ctx.setLineDash([5, 5]);
+    
+    this.ctx.beginPath();
+    this.ctx.arc(center.x, center.y, radius, 0, 2 * Math.PI);
+    this.ctx.stroke();
+    
+    this.ctx.setLineDash([]);
+  }
+
   private redrawCanvas() {
     if (!this.ctx) return;
     
@@ -224,6 +278,7 @@ export class CanvasComponent implements AfterViewInit {
     this.drawGrid();
     this.drawAllLines();
     this.drawAllRectangles();
+    this.drawAllCircles();
   }
 
   private drawAllLines() {
@@ -259,6 +314,28 @@ export class CanvasComponent implements AfterViewInit {
       this.ctx!.lineWidth = rectangle.width;
       this.ctx!.setLineDash([]);
       this.ctx!.strokeRect(rectangle.start.x, rectangle.start.y, width, height);
+    });
+  }
+
+  private drawAllCircles() {
+    if (!this.ctx) return;
+    
+    this.circles().forEach(circle => {
+      // Draw fill if specified
+      if (circle.fillColor && circle.fillColor !== 'transparent') {
+        this.ctx!.fillStyle = circle.fillColor;
+        this.ctx!.beginPath();
+        this.ctx!.arc(circle.center.x, circle.center.y, circle.radius, 0, 2 * Math.PI);
+        this.ctx!.fill();
+      }
+      
+      // Draw stroke
+      this.ctx!.strokeStyle = circle.color;
+      this.ctx!.lineWidth = circle.width;
+      this.ctx!.setLineDash([]);
+      this.ctx!.beginPath();
+      this.ctx!.arc(circle.center.x, circle.center.y, circle.radius, 0, 2 * Math.PI);
+      this.ctx!.stroke();
     });
   }
 
