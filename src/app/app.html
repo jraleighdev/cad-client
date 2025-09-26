@@ -11,19 +11,12 @@
     
     <!-- Canvas in the center -->
     <div class="center-panel">
-      <app-canvas 
-        #canvasComponent
-        (entitySelected)="onEntitySelected($event)">
-      </app-canvas>
+      <app-canvas #canvasComponent></app-canvas>
     </div>
     
     <!-- Properties panel on the right -->
     <div class="right-panel">
-      <app-properties-panel 
-        #propertiesPanel
-        [selectedEntity]="selectedEntity()"
-        [entities]="entities">
-      </app-properties-panel>
+      <app-properties-panel></app-properties-panel>
     </div>
   </div>
   
