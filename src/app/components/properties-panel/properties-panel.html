@@ -1,27 +1,122 @@
 <div class="properties-panel" [style.width.px]="panelWidth()">
   <div class="resize-handle" 
        (mousedown)="onResizeStart($event)"
-       [class.resizing]="isResizing()">
+       [class.resizing]="isResizing()"
+       title="Resize panel">
   </div>
-  <h3>Properties</h3>
+  
+  <div class="panel-header">
+    <h3>Properties</h3>
+    <span class="entity-type">{{ entityType() }}</span>
+  </div>
+  
   <div class="properties-content">
-    <div class="property-group">
-      <label>Object Type:</label>
-      <span class="property-value">None Selected</span>
-    </div>
-    <div class="property-group">
-      <label>Position:</label>
-      <div class="position-inputs" [class.narrow]="isNarrow()">
-        <input type="number" placeholder="X" disabled>
-        <input type="number" placeholder="Y" disabled>
+    @if (currentEntity()) {
+      <!-- Position Section -->
+      <div class="property-group">
+        <label class="section-label">Position</label>
+        <div class="position-inputs" [class.narrow]="isNarrow()">
+          <div class="input-with-label">
+            <label>X</label>
+            <div class="value-display">
+              <input type="number" [value]="position()?.x | number: '1.2-2'" disabled>
+              <span class="unit">px</span>
+            </div>
+          </div>
+          <div class="input-with-label">
+            <label>Y</label>
+            <div class="value-display">
+              <input type="number" [value]="position()?.y | number: '1.2-2'" disabled>
+              <span class="unit">px</span>
+            </div>
+          </div>
+        </div>
       </div>
-    </div>
-    <div class="property-group">
-      <label>Dimensions:</label>
-      <div class="dimension-inputs" [class.narrow]="isNarrow()">
-        <input type="number" placeholder="Width" disabled>
-        <input type="number" placeholder="Height" disabled>
+      
+      <!-- Dimensions Section -->
+      <div class="property-group">
+        <label class="section-label">Dimensions</label>
+        <div class="dimension-inputs" [class.narrow]="isNarrow()">
+          @let dims = dimensions()!;
+          
+          @if (dims.radius !== undefined) {
+            <!-- Circle -->
+            <div class="input-with-label">
+              <label>Radius</label>
+              <div class="value-display">
+                <input type="number" [value]="dims.radius | number: '1.2-2'" disabled>
+                <span class="unit">px</span>
+              </div>
+            </div>
+          } @else if (dims.length !== undefined) {
+            <!-- Line -->
+            <div class="input-with-label">
+              <label>Length</label>
+              <div class="value-display">
+                <input type="number" [value]="dims.length | number: '1.2-2'" disabled>
+                <span class="unit">px</span>
+              </div>
+            </div>
+          } @else if (dims.width !== undefined) {
+            <!-- Rectangle -->
+            <div class="input-with-label">
+              <label>Width</label>
+              <div class="value-display">
+                <input type="number" [value]="dims.width | number: '1.2-2'" disabled>
+                <span class="unit">px</span>
+              </div>
+            </div>
+            @if (dims.height !== undefined) {
+              <div class="input-with-label">
+                <label>Height</label>
+                <div class="value-display">
+                  <input type="number" [value]="dims.height | number: '1.2-2'" disabled>
+                  <span class="unit">px</span>
+                </div>
+              </div>
+            }
+          }
+        </div>
       </div>
-    </div>
+      
+      <!-- Appearance Section -->
+      <div class="property-group">
+        <label class="section-label">Appearance</label>
+        <div class="appearance-inputs">
+          @if ('color' in currentEntity()!) {
+            <div class="input-with-label">
+              <label>Color</label>
+              <div class="color-preview" [style.background]="currentEntity()!.color"></div>
+            </div>
+          }
+          
+          @if ('width' in currentEntity()!) {
+            <div class="input-with-label">
+              <label>Line Width</label>
+              <div class="value-display">
+                <input type="number" [value]="currentEntity()!.width" disabled>
+                <span class="unit">px</span>
+              </div>
+            </div>
+          }
+          
+          @if ('fillColor' in currentEntity()!) {
+            <div class="input-with-label">
+              <label>Fill Color</label>
+              <div class="color-preview" [style.background]="currentEntity()!.fillColor || 'transparent'">
+                @if (!currentEntity()!.fillColor) {
+                  <span>None</span>
+                }
+              </div>
+            </div>
+          }
+        </div>
+      </div>
+    } @else {
+      <div class="no-selection">
+        <span>No selection</span>
+        <p>Click on an object to view and edit its properties</p>
+      </div>
+    }
   </div>
 </div>

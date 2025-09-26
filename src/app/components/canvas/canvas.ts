@@ -1,4 +1,4 @@
-import { Component, ChangeDetectionStrategy, signal, ElementRef, ViewChild, AfterViewInit, inject } from '@angular/core';
+import { Component, ChangeDetectionStrategy, signal, ElementRef, ViewChild, AfterViewInit, inject, Output, EventEmitter } from '@angular/core';
 
 export interface Point {
   x: number;
@@ -45,14 +45,15 @@ export class CanvasComponent implements AfterViewInit {
   
   protected readonly isDrawing = signal(false);
   protected readonly currentTool = signal('select');
-  protected readonly lines = signal<Line[]>([]);
-  protected readonly rectangles = signal<Rectangle[]>([]);
-  protected readonly circles = signal<Circle[]>([]);
+  readonly lines = signal<Line[]>([]);
+  readonly rectangles = signal<Rectangle[]>([]);
+  readonly circles = signal<Circle[]>([]);
   protected readonly currentLine = signal<Partial<Line> | null>(null);
   protected readonly currentRectangle = signal<Partial<Rectangle> | null>(null);
   protected readonly currentCircle = signal<Partial<Circle> | null>(null);
   
   // Selection state
+  @Output() entitySelected = new EventEmitter<{type: 'line' | 'rectangle' | 'circle', id: string} | null>();
   protected readonly selectedEntity = signal<{type: 'line' | 'rectangle' | 'circle', id: string} | null>(null);
   protected readonly isDragging = signal(false);
   protected readonly dragOffset = signal<Point | null>(null);
@@ -121,6 +122,20 @@ export class CanvasComponent implements AfterViewInit {
     this.ctx.globalAlpha = 1;
   }
 
+  protected selectEntityAtPoint(point: Point) {
+    const entity = this.findEntityAtPoint(point);
+    this.selectedEntity.set(entity);
+    this.entitySelected.emit(entity);
+    
+    if (entity) {
+      const entityData = this.getEntityData(entity);
+      if (entityData) {
+        const offset = this.calculateDragOffset(point, entityData);
+        this.dragOffset.set(offset);
+      }
+    }
+  }
+
   protected onMouseDown(event: MouseEvent) {
     const tool = this.currentTool();
     const rect = this.canvasElement.nativeElement.getBoundingClientRect();
@@ -139,22 +154,10 @@ export class CanvasComponent implements AfterViewInit {
         return;
       }
       
-      // Handle selection and dragging
-      const entity = this.findEntityAtPoint(point);
-      this.selectedEntity.set(entity);
+      this.selectEntityAtPoint(point);
       
-      if (entity) {
+      if (this.selectedEntity()) {
         this.isDragging.set(true);
-        this.startPoint = point;
-        
-        // Calculate drag offset for smooth movement
-        const entityData = this.getEntityData(entity);
-        if (entityData) {
-          const offset = this.calculateDragOffset(point, entityData);
-          this.dragOffset.set(offset);
-        }
-      } else {
-        this.selectedEntity.set(null);
       }
     } else if (tool === 'line' || tool === 'rectangle' || tool === 'circle') {
       // Handle drawing tools
@@ -415,53 +418,85 @@ export class CanvasComponent implements AfterViewInit {
   }
 
   // Hit testing methods
-  private hitTestLine(point: Point, line: Line, tolerance: number = 5): boolean {
+  private hitTestLine(point: Point, line: Line, tolerance: number = 8): boolean {
+    // Calculate line vector and length
     const dx = line.end.x - line.start.x;
     const dy = line.end.y - line.start.y;
-    const length = Math.sqrt(dx * dx + dy * dy);
+    const lengthSquared = dx * dx + dy * dy;
     
-    if (length === 0) return false;
+    // Handle zero-length line
+    if (lengthSquared === 0) {
+      return Math.hypot(point.x - line.start.x, point.y - line.start.y) <= tolerance;
+    }
     
-    const t = ((point.x - line.start.x) * dx + (point.y - line.start.y) * dy) / (length * length);
+    // Find projection of point onto line
+    const t = ((point.x - line.start.x) * dx + (point.y - line.start.y) * dy) / lengthSquared;
+    
+    // Clamp to line segment
     const tClamped = Math.max(0, Math.min(1, t));
     
+    // Calculate closest point on the line segment to the point
     const closestX = line.start.x + tClamped * dx;
     const closestY = line.start.y + tClamped * dy;
     
-    const distance = Math.sqrt(
-      Math.pow(point.x - closestX, 2) + Math.pow(point.y - closestY, 2)
-    );
+    // Calculate distance from point to line
+    const distance = Math.hypot(point.x - closestX, point.y - closestY);
+    
+    // Visualize hit area for debugging (uncomment to enable)
+    // this.drawHitArea({x: closestX, y: closestY}, distance, tolerance, '#ff000033');
     
     return distance <= tolerance;
   }
 
-  private hitTestRectangle(point: Point, rectangle: Rectangle, tolerance: number = 5): boolean {
+  private hitTestRectangle(point: Point, rectangle: Rectangle, tolerance: number = 8): boolean {
     const minX = Math.min(rectangle.start.x, rectangle.end.x);
     const maxX = Math.max(rectangle.start.x, rectangle.end.x);
     const minY = Math.min(rectangle.start.y, rectangle.end.y);
     const maxY = Math.max(rectangle.start.y, rectangle.end.y);
     
-    // Check if point is within the rectangle bounds
-    if (point.x < minX || point.x > maxX || point.y < minY || point.y > maxY) {
-      return false;
-    }
+    // Check if point is within the rectangle bounds plus tolerance
+    const isInside = point.x >= (minX - tolerance) && 
+                    point.x <= (maxX + tolerance) && 
+                    point.y >= (minY - tolerance) && 
+                    point.y <= (maxY + tolerance);
     
-    // Check if point is near any of the four edges
+    if (!isInside) return false;
+    
+    // Check if point is near any of the four edges or corners
     const nearLeftEdge = Math.abs(point.x - minX) <= tolerance;
     const nearRightEdge = Math.abs(point.x - maxX) <= tolerance;
     const nearTopEdge = Math.abs(point.y - minY) <= tolerance;
     const nearBottomEdge = Math.abs(point.y - maxY) <= tolerance;
     
+    // Visualize hit area for debugging (uncomment to enable)
+    // if (nearLeftEdge || nearRightEdge || nearTopEdge || nearBottomEdge) {
+    //   this.drawHitArea(
+    //     { x: (minX + maxX) / 2, y: (minY + maxY) / 2 },
+    //     (maxX - minX) / 2,
+    //     (maxY - minY) / 2,
+    //     '#00ff0033'
+    //   );
+    // }
+    
     // Point must be near at least one edge to be considered a hit
     return nearLeftEdge || nearRightEdge || nearTopEdge || nearBottomEdge;
   }
 
-  private hitTestCircle(point: Point, circle: Circle, tolerance: number = 5): boolean {
-    const distance = Math.sqrt(
-      Math.pow(point.x - circle.center.x, 2) + Math.pow(point.y - circle.center.y, 2)
-    );
+  private hitTestCircle(point: Point, circle: Circle, tolerance: number = 8): boolean {
+    const distance = Math.hypot(point.x - circle.center.x, point.y - circle.center.y);
+    const hit = Math.abs(distance - circle.radius) <= tolerance;
     
-    return Math.abs(distance - circle.radius) <= tolerance;
+    // Visualize hit area for debugging (uncomment to enable)
+    // if (hit) {
+    //   this.drawHitArea(
+    //     circle.center,
+    //     circle.radius,
+    //     tolerance,
+    //     '#0000ff33'
+    //   );
+    // }
+    
+    return hit;
   }
 
   private findEntityAtPoint(point: Point): {type: 'line' | 'rectangle' | 'circle', id: string} | null {
@@ -579,35 +614,78 @@ export class CanvasComponent implements AfterViewInit {
     if (!selected) return;
 
     const entity = this.getEntityData(selected);
-    if (!entity) return;
+    if (!entity || !this.ctx) return;
 
-    if (!this.ctx) return;
-
+    // Save the current context state
+    this.ctx.save();
+    
+    // Set common highlight style
     this.ctx.strokeStyle = '#007bff';
     this.ctx.lineWidth = 2;
     this.ctx.setLineDash([5, 5]);
+    this.ctx.globalAlpha = 0.8;
 
     if (selected.type === 'line') {
       const line = entity as Line;
+      
+      // Draw a thicker semi-transparent line behind
+      this.ctx.save();
+      this.ctx.strokeStyle = 'rgba(0, 123, 255, 0.3)';
+      this.ctx.lineWidth = 12;
+      this.ctx.setLineDash([]);
       this.ctx.beginPath();
       this.ctx.moveTo(line.start.x, line.start.y);
       this.ctx.lineTo(line.end.x, line.end.y);
       this.ctx.stroke();
+      this.ctx.restore();
+      
+      // Draw the main highlight
+      this.ctx.beginPath();
+      this.ctx.moveTo(line.start.x, line.start.y);
+      this.ctx.lineTo(line.end.x, line.end.y);
+      this.ctx.stroke();
+      
+      // Draw handles at the ends
+      this.drawHandle(line.start.x, line.start.y, 'start');
+      this.drawHandle(line.end.x, line.end.y, 'end');
+      
     } else if (selected.type === 'rectangle') {
       const rectangle = entity as Rectangle;
-      const width = rectangle.end.x - rectangle.start.x;
-      const height = rectangle.end.y - rectangle.start.y;
-      this.ctx.strokeRect(rectangle.start.x, rectangle.start.y, width, height);
+      const minX = Math.min(rectangle.start.x, rectangle.end.x);
+      const maxX = Math.max(rectangle.start.x, rectangle.end.x);
+      const minY = Math.min(rectangle.start.y, rectangle.end.y);
+      const maxY = Math.max(rectangle.start.y, rectangle.end.y);
+      const width = maxX - minX;
+      const height = maxY - minY;
+      
+      // Draw a semi-transparent fill
+      this.ctx.save();
+      this.ctx.fillStyle = 'rgba(0, 123, 255, 0.1)';
+      this.ctx.fillRect(minX, minY, width, height);
+      this.ctx.restore();
+      
+      // Draw the border highlight
+      this.ctx.strokeRect(minX, minY, width, height);
+      
     } else if (selected.type === 'circle') {
       const circle = entity as Circle;
+      
+      // Draw a semi-transparent fill
+      this.ctx.save();
+      this.ctx.fillStyle = 'rgba(0, 123, 255, 0.1)';
+      this.ctx.beginPath();
+      this.ctx.arc(circle.center.x, circle.center.y, circle.radius, 0, 2 * Math.PI);
+      this.ctx.fill();
+      this.ctx.restore();
+      
+      // Draw the border highlight
       this.ctx.beginPath();
       this.ctx.arc(circle.center.x, circle.center.y, circle.radius, 0, 2 * Math.PI);
       this.ctx.stroke();
     }
-
-    this.ctx.setLineDash([]);
     
-    // Draw resize handles
+    // Restore the context state and draw resize handles
+    this.ctx.setLineDash([]);
     this.drawResizeHandles(selected, entity);
   }
 
