@@ -1,10 +1,9 @@
 import { Component, signal, ViewChild, computed } from '@angular/core';
 import { HeaderComponent } from './components/header/header';
 import { FooterComponent } from './components/footer/footer';
+import { CanvasComponent, Line, Rectangle, Circle } from './components/canvas/canvas';
+import { PropertiesPanelComponent, SelectedEntity } from './components/properties-panel/properties-panel';
 import { ToolbarComponent } from './components/toolbar/toolbar';
-import { CanvasComponent } from './components/canvas/canvas';
-import { PropertiesPanelComponent } from './components/properties-panel/properties-panel';
-import { SelectedEntity } from './types/entity';
 
 @Component({
   selector: 'app-root',

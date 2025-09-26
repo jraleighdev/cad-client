@@ -1,9 +1,49 @@
-import { Component, ChangeDetectionStrategy, signal, ElementRef, HostListener, inject, Input, computed, input } from '@angular/core';
+import { Component, ChangeDetectionStrategy, signal, ElementRef, HostListener, inject, Input, computed } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
-import { Circle } from '../../types/circle';
-import { Line } from '../../types/line';
-import { Rectangle } from '../../types/rectangle';
-import { SelectedEntity, Entity } from '../../types/entity';
+
+interface Point {
+  x: number;
+  y: number;
+}
+
+interface Line {
+  id: string;
+  start: Point;
+  end: Point;
+  color: string;
+  width: number;
+}
+
+interface Rectangle {
+  id: string;
+  start: Point;
+  end: Point;
+  color: string;
+  width: number;
+  fillColor?: string;
+}
+
+interface Circle {
+  id: string;
+  center: Point;
+  radius: number;
+  color: string;
+  width: number;
+  fillColor?: string;
+}
+
+type Entity = (Line | Rectangle | Circle) & {
+  color?: string;
+  width?: number;
+  fillColor?: string;
+};
+
+export type EntityType = 'line' | 'rectangle' | 'circle' | null;
+
+export interface SelectedEntity {
+  type: EntityType;
+  id: string;
+}
 
 @Component({
   selector: 'app-properties-panel',
@@ -16,8 +56,8 @@ import { SelectedEntity, Entity } from '../../types/entity';
 export class PropertiesPanelComponent {
   private elementRef = inject(ElementRef);
   
-  selectedEntity = input<SelectedEntity | null>(null);
-  entities = input<{ lines: Line[], rectangles: Rectangle[], circles: Circle[] }>({ lines: [], rectangles: [], circles: [] });
+  @Input() selectedEntity: SelectedEntity | null = null;
+  @Input() entities: { lines: Line[], rectangles: Rectangle[], circles: Circle[] } = { lines: [], rectangles: [], circles: [] };
   
   protected readonly panelWidth = signal(300);
   protected readonly isResizing = signal(false);
@@ -26,13 +66,13 @@ export class PropertiesPanelComponent {
   protected readonly isNarrow = signal(false);
 
   protected readonly currentEntity = computed<Entity | null>(() => {
-    if (!this.selectedEntity()) return null;
+    if (!this.selectedEntity) return null;
     
-    const { type, id } = this.selectedEntity()!;
+    const { type, id } = this.selectedEntity;
     if (!type) return null;
     
     try {
-      const entityList = this.entities()[`${type}s` as const];
+      const entityList = this.entities[`${type}s` as const];
       const found = entityList.find(e => e.id === id);
       return found || null;
     } catch (error) {
@@ -42,8 +82,8 @@ export class PropertiesPanelComponent {
   });
 
   protected readonly entityType = computed<string>(() => {
-    if (!this.selectedEntity() || !this.selectedEntity()?.type) return 'None';
-    return this.selectedEntity()!.type!.charAt(0).toUpperCase() + this.selectedEntity()!.type!.slice(1);
+    if (!this.selectedEntity || !this.selectedEntity.type) return 'None';
+    return this.selectedEntity.type.charAt(0).toUpperCase() + this.selectedEntity.type.slice(1);
   });
 
   protected readonly position = computed<{x: number, y: number} | null>(() => {
