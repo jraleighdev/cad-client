@@ -1,4 +1,4 @@
-import { Component, ChangeDetectionStrategy, signal, ElementRef, ViewChild, AfterViewInit, inject } from '@angular/core';
+import { Component, ChangeDetectionStrategy, signal, ElementRef, ViewChild, AfterViewInit, OnDestroy, inject } from '@angular/core';
 
 export interface Point {
   x: number;
@@ -38,7 +38,7 @@ export interface Circle {
   styleUrl: './canvas.css',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
-export class CanvasComponent implements AfterViewInit {
+export class CanvasComponent implements AfterViewInit, OnDestroy {
   @ViewChild('canvasElement', { static: true }) canvasElement!: ElementRef<HTMLCanvasElement>;
   
   private elementRef = inject(ElementRef);
@@ -64,9 +64,16 @@ export class CanvasComponent implements AfterViewInit {
   
   private ctx: CanvasRenderingContext2D | null = null;
   private startPoint: Point | null = null;
+  private resizeObserver: ResizeObserver | null = null;
 
   ngAfterViewInit() {
     this.initializeCanvas();
+  }
+
+  ngOnDestroy() {
+    if (this.resizeObserver) {
+      this.resizeObserver.disconnect();
+    }
   }
 
   private initializeCanvas() {
@@ -80,6 +87,7 @@ export class CanvasComponent implements AfterViewInit {
     
     this.resizeCanvas();
     this.drawGrid();
+    this.setupResizeObserver();
   }
 
   private resizeCanvas() {
@@ -92,16 +100,30 @@ export class CanvasComponent implements AfterViewInit {
     }
   }
 
+  private setupResizeObserver() {
+    const canvas = this.canvasElement.nativeElement;
+    const container = canvas.parentElement;
+
+    if (container && window.ResizeObserver) {
+      this.resizeObserver = new ResizeObserver(() => {
+        this.resizeCanvas();
+        this.redrawCanvas();
+      });
+
+      this.resizeObserver.observe(container);
+    }
+  }
+
   private drawGrid() {
     if (!this.ctx) return;
-    
+
     const canvas = this.canvasElement.nativeElement;
     const gridSize = 20;
-    
+
     this.ctx.strokeStyle = '#bdc3c7';
     this.ctx.lineWidth = 1;
     this.ctx.globalAlpha = 0.3;
-    
+
     // Vertical lines
     for (let x = 0; x <= canvas.width; x += gridSize) {
       this.ctx.beginPath();
@@ -109,7 +131,7 @@ export class CanvasComponent implements AfterViewInit {
       this.ctx.lineTo(x, canvas.height);
       this.ctx.stroke();
     }
-    
+
     // Horizontal lines
     for (let y = 0; y <= canvas.height; y += gridSize) {
       this.ctx.beginPath();
@@ -117,7 +139,7 @@ export class CanvasComponent implements AfterViewInit {
       this.ctx.lineTo(canvas.width, y);
       this.ctx.stroke();
     }
-    
+
     this.ctx.globalAlpha = 1;
   }
 
@@ -646,7 +668,7 @@ export class CanvasComponent implements AfterViewInit {
     }
   }
 
-  private drawHandle(x: number, y: number, handleId: string) {
+  private drawHandle(x: number, y: number, _handleId: string) {
     if (!this.ctx) return;
 
     const size = this.handleSize;
