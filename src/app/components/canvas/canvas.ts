@@ -1,4 +1,5 @@
-import { Component, ChangeDetectionStrategy, signal, ElementRef, ViewChild, AfterViewInit, OnDestroy, inject } from '@angular/core';
+import { Component, ChangeDetectionStrategy, signal, ElementRef, ViewChild, AfterViewInit, OnDestroy, inject, output } from '@angular/core';
+import { EntityProperties, EntityPropertyCalculator, PropertyUpdate } from '../../types/entity-properties';
 
 export interface Point {
   x: number;
@@ -65,6 +66,9 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
   private ctx: CanvasRenderingContext2D | null = null;
   private startPoint: Point | null = null;
   private resizeObserver: ResizeObserver | null = null;
+
+  // Output events
+  entitySelected = output<EntityProperties | null>();
 
   ngAfterViewInit() {
     this.initializeCanvas();
@@ -164,19 +168,20 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
       // Handle selection and dragging
       const entity = this.findEntityAtPoint(point);
       this.selectedEntity.set(entity);
-      
+
+      // Emit entity selection event
+      this.emitEntitySelection(entity);
+
       if (entity) {
         this.isDragging.set(true);
         this.startPoint = point;
-        
+
         // Calculate drag offset for smooth movement
         const entityData = this.getEntityData(entity);
         if (entityData) {
           const offset = this.calculateDragOffset(point, entityData);
           this.dragOffset.set(offset);
         }
-      } else {
-        this.selectedEntity.set(null);
       }
     } else if (tool === 'line' || tool === 'rectangle' || tool === 'circle') {
       // Handle drawing tools
@@ -594,6 +599,12 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
     }
 
     this.redrawCanvas();
+
+    // Emit updated properties after moving
+    const selectedEntityInfo = this.selectedEntity();
+    if (selectedEntityInfo) {
+      this.emitEntitySelection(selectedEntityInfo);
+    }
   }
 
   private drawSelectionHighlight() {
@@ -766,6 +777,12 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
     }
 
     this.redrawCanvas();
+
+    // Emit updated properties after resizing
+    const selectedEntityInfo = this.selectedEntity();
+    if (selectedEntityInfo) {
+      this.emitEntitySelection(selectedEntityInfo);
+    }
   }
 
   private resizeLine(lineId: string, handle: string, point: Point) {
@@ -857,5 +874,114 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
         return { ...circle, radius: Math.max(0, newRadius) };
       })
     );
+  }
+
+  /**
+   * Emit entity selection event with calculated properties
+   */
+  private emitEntitySelection(entity: {type: 'line' | 'rectangle' | 'circle', id: string} | null) {
+    if (!entity) {
+      this.entitySelected.emit(null);
+      return;
+    }
+
+    const entityData = this.getEntityData(entity);
+    if (!entityData) {
+      this.entitySelected.emit(null);
+      return;
+    }
+
+    const canvas = this.canvasElement.nativeElement;
+    const properties = EntityPropertyCalculator.calculateProperties(
+      entityData,
+      entity.type,
+      canvas.height
+    );
+
+    this.entitySelected.emit(properties);
+  }
+
+  /**
+   * Update entity based on property changes from properties panel
+   */
+  updateEntityFromProperties(update: PropertyUpdate) {
+    if (!update.entityId || !update.entityType) return;
+
+    const canvas = this.canvasElement.nativeElement;
+
+    // Find the entity to update
+    let entityData: Line | Rectangle | Circle | null = null;
+    let entityIndex = -1;
+
+    if (update.entityType === 'line') {
+      entityIndex = this.lines().findIndex(line => line.id === update.entityId);
+      if (entityIndex >= 0) {
+        entityData = this.lines()[entityIndex];
+      }
+    } else if (update.entityType === 'rectangle') {
+      entityIndex = this.rectangles().findIndex(rectangle => rectangle.id === update.entityId);
+      if (entityIndex >= 0) {
+        entityData = this.rectangles()[entityIndex];
+      }
+    } else if (update.entityType === 'circle') {
+      entityIndex = this.circles().findIndex(circle => circle.id === update.entityId);
+      if (entityIndex >= 0) {
+        entityData = this.circles()[entityIndex];
+      }
+    }
+
+    if (!entityData || entityIndex < 0) return;
+
+    // Create updated properties
+    const currentProperties = EntityPropertyCalculator.calculateProperties(
+      entityData,
+      update.entityType,
+      canvas.height
+    );
+
+    const updatedProperties: EntityProperties = {
+      ...currentProperties,
+      ...update,
+      id: update.entityId,
+      type: update.entityType
+    };
+
+    // Convert properties back to entity data
+    const updatedEntity = EntityPropertyCalculator.updateEntityFromProperties(
+      entityData,
+      update.entityType,
+      updatedProperties,
+      canvas.height
+    );
+
+    // Update the entity in the appropriate array
+    if (update.entityType === 'line') {
+      this.lines.update(lines =>
+        lines.map((line, index) =>
+          index === entityIndex ? updatedEntity as Line : line
+        )
+      );
+    } else if (update.entityType === 'rectangle') {
+      this.rectangles.update(rectangles =>
+        rectangles.map((rectangle, index) =>
+          index === entityIndex ? updatedEntity as Rectangle : rectangle
+        )
+      );
+    } else if (update.entityType === 'circle') {
+      this.circles.update(circles =>
+        circles.map((circle, index) =>
+          index === entityIndex ? updatedEntity as Circle : circle
+        )
+      );
+    }
+
+    // Redraw canvas and emit updated properties
+    this.redrawCanvas();
+
+    // Re-emit updated properties to sync with properties panel
+    const selectedEntityInfo = this.selectedEntity();
+    if (selectedEntityInfo && selectedEntityInfo.id === update.entityId) {
+      this.emitEntitySelection(selectedEntityInfo);
+    }
   }
 }

@@ -4,6 +4,7 @@ import { FooterComponent } from './components/footer/footer';
 import { CanvasComponent } from './components/canvas/canvas';
 import { PropertiesPanelComponent } from './components/properties-panel/properties-panel';
 import { ToolbarComponent } from './components/toolbar/toolbar';
+import { EntityProperties, PropertyUpdate } from './types/entity-properties';
 
 @Component({
   selector: 'app-root',
@@ -19,12 +20,23 @@ import { ToolbarComponent } from './components/toolbar/toolbar';
 })
 export class App {
   @ViewChild('canvasComponent') canvasComponent!: CanvasComponent;
-  
+
   protected readonly title = signal('cad-client');
+  protected readonly selectedEntityProperties = signal<EntityProperties | null>(null);
 
   protected onToolSelected(tool: string) {
     if (this.canvasComponent) {
       this.canvasComponent.setTool(tool);
+    }
+  }
+
+  protected onEntitySelected(properties: EntityProperties | null) {
+    this.selectedEntityProperties.set(properties);
+  }
+
+  protected onPropertyChanged(update: PropertyUpdate) {
+    if (this.canvasComponent) {
+      this.canvasComponent.updateEntityFromProperties(update);
     }
   }
 }
