@@ -5,7 +5,7 @@
     "ng": "ng",
     "start": "ng serve",
     "build": "ng build",
-    "build:gh-pages": "ng build --configuration production --base-href /cad-client/",
+    "build:gh-pages": "ng build --output-path docs --configuration production --base-href /cad-client/",
     "watch": "ng build --watch --configuration development",
     "test": "ng test"
   },
