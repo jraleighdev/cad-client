@@ -1,5 +1,6 @@
 import { Component, ChangeDetectionStrategy, signal, ElementRef, ViewChild, AfterViewInit, OnDestroy, inject, output } from '@angular/core';
 import { EntityProperties, EntityPropertyCalculator, PropertyUpdate } from '../../types/entity-properties';
+import { AnchorPoint, AnchorPointCalculator, SnapResult } from '../../types/anchor-points';
 
 export interface Point {
   x: number;
@@ -62,7 +63,13 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
   protected readonly isResizing = signal(false);
   protected readonly resizeHandle = signal<string | null>(null);
   protected readonly handleSize = 8; // Size of resize handles in pixels
-  
+
+  // Anchor point state
+  protected readonly showAnchorPoints = signal(true);
+  protected readonly currentSnapPoint = signal<AnchorPoint | null>(null);
+  protected readonly hoveredAnchorPoints = signal<AnchorPoint[]>([]);
+  protected readonly anchorPointSize = 4; // Size of anchor point indicators
+
   private ctx: CanvasRenderingContext2D | null = null;
   private startPoint: Point | null = null;
   private resizeObserver: ResizeObserver | null = null;
@@ -184,14 +191,18 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
         }
       }
     } else if (tool === 'line' || tool === 'rectangle' || tool === 'circle') {
-      // Handle drawing tools
-      this.startPoint = point;
+      // Handle drawing tools with snapping
+      const snapResult = this.applySnapping(point);
+      const snappedPoint = snapResult.snapPoint;
+
+      this.startPoint = snappedPoint;
       this.isDrawing.set(true);
-      
+      this.currentSnapPoint.set(snapResult.anchorPoint || null);
+
       if (tool === 'line') {
         const newLine: Partial<Line> = {
           id: Date.now().toString(),
-          start: point,
+          start: snappedPoint,
           color: '#000000',
           width: 2
         };
@@ -199,7 +210,7 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
       } else if (tool === 'rectangle') {
         const newRectangle: Partial<Rectangle> = {
           id: Date.now().toString(),
-          start: point,
+          start: snappedPoint,
           color: '#000000',
           width: 2,
           fillColor: 'transparent'
@@ -208,7 +219,7 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
       } else if (tool === 'circle') {
         const newCircle: Partial<Circle> = {
           id: Date.now().toString(),
-          center: point,
+          center: snappedPoint,
           color: '#000000',
           width: 2,
           fillColor: 'transparent'
@@ -223,33 +234,82 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
     const point = { x, y };
-    
+
     if (this.isResizing() && this.selectedEntity()) {
-      // Handle resizing selected entity
-      this.resizeSelectedEntity(point);
+      // Handle resizing selected entity with snapping
+      const selected = this.selectedEntity();
+      const snapResult = this.applySnapping(point, selected?.id);
+      const snappedPoint = snapResult.snapPoint;
+      this.currentSnapPoint.set(snapResult.anchorPoint || null);
+      this.hoveredAnchorPoints.set([]);
+
+      this.resizeSelectedEntity(snappedPoint);
       this.setCanvasCursor('grabbing');
     } else if (this.isDragging() && this.selectedEntity()) {
-      // Handle dragging selected entity
-      this.moveSelectedEntity(point);
+      // Handle dragging selected entity with snapping
+      const selected = this.selectedEntity();
+
+      // Calculate the new position based on drag offset first
+      const offset = this.dragOffset();
+      if (!offset) return;
+
+      const newPosition = {
+        x: point.x - offset.x,
+        y: point.y - offset.y
+      };
+
+      // Apply snapping to the calculated position
+      const snapResult = this.applySnapping(newPosition, selected?.id);
+      const snappedPosition = snapResult.snapPoint;
+      this.currentSnapPoint.set(snapResult.anchorPoint || null);
+      this.hoveredAnchorPoints.set([]);
+
+      this.moveSelectedEntityToPosition(snappedPosition);
       this.setCanvasCursor('move');
     } else if (this.isDrawing() && this.startPoint) {
-      // Handle drawing preview
+      // Handle drawing preview with snapping
+      const snapResult = this.applySnapping(point);
+      const snappedPoint = snapResult.snapPoint;
+      this.currentSnapPoint.set(snapResult.anchorPoint || null);
+      this.hoveredAnchorPoints.set([]);
+
       this.redrawCanvas();
-      
+
       const tool = this.currentTool();
       if (tool === 'line') {
-        this.drawPreviewLine(this.startPoint, point);
+        this.drawPreviewLine(this.startPoint, snappedPoint);
       } else if (tool === 'rectangle') {
-        this.drawPreviewRectangle(this.startPoint, point);
+        this.drawPreviewRectangle(this.startPoint, snappedPoint);
       } else if (tool === 'circle') {
-        this.drawPreviewCircle(this.startPoint, point);
+        this.drawPreviewCircle(this.startPoint, snappedPoint);
       }
     } else {
       // Update cursor when hovering over handles (not dragging/resizing)
       const handle = this.getHandleAtPoint(point);
       if (handle) {
         this.setCanvasCursor(this.cursorForHandle(handle));
+        this.currentSnapPoint.set(null);
+        this.hoveredAnchorPoints.set([]);
       } else {
+        // When just hovering (not actively drawing/moving/resizing), only show hover state
+        // Don't set currentSnapPoint unless we're actually performing an operation
+        this.currentSnapPoint.set(null);
+
+        // Find all anchor points near the mouse for hover display
+        // Use a larger boundary for hover detection to make it less precise than snapping
+        const hoverDistance = AnchorPointCalculator.getSnapDistance() * 1.5; // 15 pixels vs 10 for snapping
+        const allAnchors = this.getAllAnchorPoints();
+        const hoveredAnchors = allAnchors.filter(anchor => {
+          const distance = Math.sqrt(
+            Math.pow(point.x - anchor.point.x, 2) + Math.pow(point.y - anchor.point.y, 2)
+          );
+          return distance <= hoverDistance;
+        });
+        this.hoveredAnchorPoints.set(hoveredAnchors);
+
+        // Redraw canvas to update hover indicators
+        this.redrawCanvas();
+
         this.setCanvasCursor('crosshair');
       }
     }
@@ -260,25 +320,31 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
       // Finish resizing
       this.isResizing.set(false);
       this.resizeHandle.set(null);
+      this.currentSnapPoint.set(null);
       this.setCanvasCursor('crosshair');
     } else if (this.isDragging()) {
       // Finish dragging
       this.isDragging.set(false);
       this.dragOffset.set(null);
+      this.currentSnapPoint.set(null);
       this.setCanvasCursor('crosshair');
     } else if (this.isDrawing() && this.startPoint) {
-      // Finish drawing
+      // Finish drawing with snapping
       const rect = this.canvasElement.nativeElement.getBoundingClientRect();
       const x = event.clientX - rect.left;
       const y = event.clientY - rect.top;
-      
+      const endPoint = { x, y };
+
+      const snapResult = this.applySnapping(endPoint);
+      const snappedEndPoint = snapResult.snapPoint;
+
       const tool = this.currentTool();
       
       if (tool === 'line') {
         const completedLine: Line = {
           id: this.currentLine()?.id || Date.now().toString(),
           start: this.startPoint,
-          end: { x, y },
+          end: snappedEndPoint,
           color: this.currentLine()?.color || '#000000',
           width: this.currentLine()?.width || 2
         };
@@ -288,7 +354,7 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
         const completedRectangle: Rectangle = {
           id: this.currentRectangle()?.id || Date.now().toString(),
           start: this.startPoint,
-          end: { x, y },
+          end: snappedEndPoint,
           color: this.currentRectangle()?.color || '#000000',
           width: this.currentRectangle()?.width || 2,
           fillColor: this.currentRectangle()?.fillColor || 'transparent'
@@ -297,7 +363,7 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
         this.currentRectangle.set(null);
       } else if (tool === 'circle') {
         const radius = Math.sqrt(
-          Math.pow(x - this.startPoint.x, 2) + Math.pow(y - this.startPoint.y, 2)
+          Math.pow(snappedEndPoint.x - this.startPoint.x, 2) + Math.pow(snappedEndPoint.y - this.startPoint.y, 2)
         );
         const completedCircle: Circle = {
           id: this.currentCircle()?.id || Date.now().toString(),
@@ -313,6 +379,7 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
       
       this.isDrawing.set(false);
       this.startPoint = null;
+      this.currentSnapPoint.set(null);
     }
     
     this.redrawCanvas();
@@ -377,6 +444,8 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
     this.drawAllRectangles();
     this.drawAllCircles();
     this.drawSelectionHighlight();
+    this.drawAnchorPoints();
+    this.drawSnapIndicator();
   }
 
   private drawAllLines() {
@@ -556,42 +625,106 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
     const newY = point.y - offset.y;
 
     if (selected.type === 'line') {
-      this.lines.update(lines => 
-        lines.map(line => 
-          line.id === selected.id 
+      this.lines.update(lines =>
+        lines.map(line =>
+          line.id === selected.id
             ? {
                 ...line,
                 start: { x: newX, y: newY },
-                end: { 
-                  x: line.end.x + (newX - line.start.x), 
-                  y: line.end.y + (newY - line.start.y) 
+                end: {
+                  x: line.end.x + (newX - line.start.x),
+                  y: line.end.y + (newY - line.start.y)
                 }
               }
             : line
         )
       );
     } else if (selected.type === 'rectangle') {
-      this.rectangles.update(rectangles => 
-        rectangles.map(rectangle => 
-          rectangle.id === selected.id 
+      this.rectangles.update(rectangles =>
+        rectangles.map(rectangle =>
+          rectangle.id === selected.id
             ? {
                 ...rectangle,
                 start: { x: newX, y: newY },
-                end: { 
-                  x: rectangle.end.x + (newX - rectangle.start.x), 
-                  y: rectangle.end.y + (newY - rectangle.start.y) 
+                end: {
+                  x: rectangle.end.x + (newX - rectangle.start.x),
+                  y: rectangle.end.y + (newY - rectangle.start.y)
                 }
               }
             : rectangle
         )
       );
     } else if (selected.type === 'circle') {
-      this.circles.update(circles => 
-        circles.map(circle => 
-          circle.id === selected.id 
+      this.circles.update(circles =>
+        circles.map(circle =>
+          circle.id === selected.id
             ? {
                 ...circle,
                 center: { x: newX, y: newY }
+              }
+            : circle
+        )
+      );
+    }
+
+    this.redrawCanvas();
+
+    // Emit updated properties after moving
+    const selectedEntityInfo = this.selectedEntity();
+    if (selectedEntityInfo) {
+      this.emitEntitySelection(selectedEntityInfo);
+    }
+  }
+
+  private moveSelectedEntityToPosition(position: Point) {
+    const selected = this.selectedEntity();
+    if (!selected) return;
+
+    if (selected.type === 'line') {
+      this.lines.update(lines =>
+        lines.map(line => {
+          if (line.id !== selected.id) return line;
+
+          // Calculate the offset to move the line
+          const dx = position.x - line.start.x;
+          const dy = position.y - line.start.y;
+
+          return {
+            ...line,
+            start: { x: position.x, y: position.y },
+            end: {
+              x: line.end.x + dx,
+              y: line.end.y + dy
+            }
+          };
+        })
+      );
+    } else if (selected.type === 'rectangle') {
+      this.rectangles.update(rectangles =>
+        rectangles.map(rectangle => {
+          if (rectangle.id !== selected.id) return rectangle;
+
+          // Calculate the offset to move the rectangle
+          const dx = position.x - rectangle.start.x;
+          const dy = position.y - rectangle.start.y;
+
+          return {
+            ...rectangle,
+            start: { x: position.x, y: position.y },
+            end: {
+              x: rectangle.end.x + dx,
+              y: rectangle.end.y + dy
+            }
+          };
+        })
+      );
+    } else if (selected.type === 'circle') {
+      this.circles.update(circles =>
+        circles.map(circle =>
+          circle.id === selected.id
+            ? {
+                ...circle,
+                center: { x: position.x, y: position.y }
               }
             : circle
         )
@@ -983,5 +1116,132 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
     if (selectedEntityInfo && selectedEntityInfo.id === update.entityId) {
       this.emitEntitySelection(selectedEntityInfo);
     }
+  }
+
+  /**
+   * Apply snapping to a point if near anchor points
+   */
+  private applySnapping(point: Point, excludeEntityId?: string): SnapResult {
+    return AnchorPointCalculator.snapToNearestAnchor(
+      point,
+      this.lines(),
+      this.rectangles(),
+      this.circles(),
+      excludeEntityId
+    );
+  }
+
+  /**
+   * Get all current anchor points
+   */
+  private getAllAnchorPoints(): AnchorPoint[] {
+    return AnchorPointCalculator.getAllAnchorPoints(
+      this.lines(),
+      this.rectangles(),
+      this.circles()
+    );
+  }
+
+  /**
+   * Draw anchor points for selected entities and hovered anchor points
+   */
+  private drawAnchorPoints() {
+    if (!this.ctx || !this.showAnchorPoints()) return;
+
+    const selectedEntity = this.selectedEntity();
+    const hoveredAnchors = this.hoveredAnchorPoints();
+    const currentSnapPoint = this.currentSnapPoint();
+
+    // Draw anchor points for selected entity (orange)
+    if (selectedEntity) {
+      const allAnchors = this.getAllAnchorPoints();
+      const selectedEntityAnchors = allAnchors.filter(anchor =>
+        anchor.entityId === selectedEntity.id
+      );
+
+      this.ctx.fillStyle = '#ff6b35'; // Orange for selected entity anchors
+      this.ctx.strokeStyle = '#ffffff';
+      this.ctx.lineWidth = 1;
+
+      selectedEntityAnchors.forEach(anchor => {
+        this.drawAnchorPoint(anchor.point);
+      });
+    }
+
+    // Draw hovered anchor points (blue) - exclude the currently snapped point
+    hoveredAnchors.forEach(anchor => {
+      // Don't draw hovered if it's the currently snapped point (will be drawn green in drawSnapIndicator)
+      if (!currentSnapPoint || anchor.id !== currentSnapPoint.id) {
+        // Don't draw if it's already shown as selected entity anchor
+        if (!selectedEntity || anchor.entityId !== selectedEntity.id) {
+          if (this.ctx) {
+            // Draw the anchor point in blue for hover state
+            this.ctx.fillStyle = '#007bff'; // Blue for hovered anchor point
+            this.ctx.strokeStyle = '#ffffff';
+            this.ctx.lineWidth = 1;
+            this.drawAnchorPoint(anchor.point);
+
+            // Draw a larger blue circle around the hovered anchor point
+            this.ctx.strokeStyle = '#007bff';
+            this.ctx.lineWidth = 2;
+            this.ctx.setLineDash([]);
+
+            const radius = 6;
+            this.ctx.beginPath();
+            this.ctx.arc(anchor.point.x, anchor.point.y, radius, 0, 2 * Math.PI);
+            this.ctx.stroke();
+          }
+        }
+      }
+    });
+  }
+
+  /**
+   * Draw a single anchor point
+   */
+  private drawAnchorPoint(point: Point) {
+    if (!this.ctx) return;
+
+    const size = this.anchorPointSize;
+    const halfSize = size / 2;
+
+    // Draw small square for anchor point
+    this.ctx.fillRect(point.x - halfSize, point.y - halfSize, size, size);
+    this.ctx.strokeRect(point.x - halfSize, point.y - halfSize, size, size);
+  }
+
+  /**
+   * Draw snap indicator when currently snapping
+   */
+  private drawSnapIndicator() {
+    if (!this.ctx) return;
+
+    const snapPoint = this.currentSnapPoint();
+    if (!snapPoint) return;
+
+    // Draw the anchor point in green for snapped state
+    this.ctx.fillStyle = '#00ff00'; // Green for snapped anchor point
+    this.ctx.strokeStyle = '#ffffff';
+    this.ctx.lineWidth = 1;
+    this.drawAnchorPoint(snapPoint.point);
+
+    // Draw a larger highlight circle around the snap point
+    this.ctx.strokeStyle = '#00ff00';
+    this.ctx.lineWidth = 2;
+    this.ctx.setLineDash([]);
+
+    const radius = 8;
+    this.ctx.beginPath();
+    this.ctx.arc(snapPoint.point.x, snapPoint.point.y, radius, 0, 2 * Math.PI);
+    this.ctx.stroke();
+
+    // Draw cross hair
+    const crossSize = 12;
+    this.ctx.beginPath();
+    this.ctx.moveTo(snapPoint.point.x - crossSize, snapPoint.point.y);
+    this.ctx.lineTo(snapPoint.point.x + crossSize, snapPoint.point.y);
+    this.ctx.moveTo(snapPoint.point.x, snapPoint.point.y - crossSize);
+    this.ctx.lineTo(snapPoint.point.x, snapPoint.point.y + crossSize);
+    this.ctx.stroke();
   }
 }
