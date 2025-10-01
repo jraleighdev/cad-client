@@ -1,6 +1,6 @@
 <footer class="footer">
   <div class="footer-content">
-    <span class="status-text">Ready</span>
-    <span class="coordinates">X: 0, Y: 0</span>
+    <span class="coordinates">X: {{ mousePosition().x }}, Y: {{ mousePosition().y }}</span>
+    <span class="snap-status clickable" (click)="onSnapClick()">Snap: {{ snapEnabled() ? 'On' : 'Off' }}</span>
   </div>
 </footer>

@@ -23,3 +23,18 @@
   font-family: monospace;
   color: #bdc3c7;
 }
+
+.snap-status {
+  color: #3498db;
+  font-weight: 500;
+}
+
+.clickable {
+  cursor: pointer;
+  user-select: none;
+  transition: opacity 0.2s ease;
+}
+
+.clickable:hover {
+  opacity: 0.8;
+}

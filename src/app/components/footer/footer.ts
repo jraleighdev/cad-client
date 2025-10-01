@@ -1,4 +1,4 @@
-import { Component, ChangeDetectionStrategy } from '@angular/core';
+import { Component, ChangeDetectionStrategy, input, output } from '@angular/core';
 
 @Component({
   selector: 'app-footer',
@@ -8,5 +8,13 @@ import { Component, ChangeDetectionStrategy } from '@angular/core';
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class FooterComponent {
+  snapEnabled = input<boolean>(true);
+  mousePosition = input<{x: number, y: number}>({x: 0, y: 0});
 
+  snapToggled = output<void>();
+
+  onSnapClick() {
+    console.log('hello');
+    this.snapToggled.emit();
+  }
 }

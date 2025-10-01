@@ -66,6 +66,7 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
 
   // Anchor point state
   protected readonly showAnchorPoints = signal(true);
+  protected readonly snapEnabled = signal(true);
   protected readonly currentSnapPoint = signal<AnchorPoint | null>(null);
   protected readonly hoveredAnchorPoints = signal<AnchorPoint[]>([]);
   protected readonly anchorPointSize = 4; // Size of anchor point indicators
@@ -73,18 +74,23 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
   private ctx: CanvasRenderingContext2D | null = null;
   private startPoint: Point | null = null;
   private resizeObserver: ResizeObserver | null = null;
+  private keyboardListener: ((event: KeyboardEvent) => void) | undefined;
 
   // Output events
   entitySelected = output<EntityProperties | null>();
+  snapStateChanged = output<boolean>();
+  mousePositionChanged = output<{x: number, y: number}>();
 
   ngAfterViewInit() {
     this.initializeCanvas();
+    this.setupKeyboardListeners();
   }
 
   ngOnDestroy() {
     if (this.resizeObserver) {
       this.resizeObserver.disconnect();
     }
+    this.removeKeyboardListeners();
   }
 
   private initializeCanvas() {
@@ -122,6 +128,24 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
       });
 
       this.resizeObserver.observe(container);
+    }
+  }
+
+  private setupKeyboardListeners() {
+    this.keyboardListener = (event: KeyboardEvent) => {
+      // Ctrl+B to toggle snap
+      if (event.ctrlKey && event.key.toLowerCase() === 'b') {
+        event.preventDefault();
+        this.toggleSnap();
+      }
+    };
+
+    document.addEventListener('keydown', this.keyboardListener);
+  }
+
+  private removeKeyboardListeners() {
+    if (this.keyboardListener) {
+      document.removeEventListener('keydown', this.keyboardListener);
     }
   }
 
@@ -234,6 +258,9 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
     const point = { x, y };
+
+    // Emit mouse position for footer display
+    this.mousePositionChanged.emit({ x: Math.round(x), y: Math.round(y) });
 
     if (this.isResizing() && this.selectedEntity()) {
       // Handle resizing selected entity with snapping
@@ -508,6 +535,11 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
 
   setTool(tool: string) {
     this.currentTool.set(tool);
+  }
+
+  toggleSnap() {
+    this.snapEnabled.update(enabled => !enabled);
+    this.snapStateChanged.emit(this.snapEnabled());
   }
 
   // Hit testing methods
@@ -1122,6 +1154,13 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
    * Apply snapping to a point if near anchor points
    */
   private applySnapping(point: Point, excludeEntityId?: string): SnapResult {
+    if (!this.snapEnabled()) {
+      return {
+        snapped: false,
+        snapPoint: point
+      };
+    }
+
     return AnchorPointCalculator.snapToNearestAnchor(
       point,
       this.lines(),
