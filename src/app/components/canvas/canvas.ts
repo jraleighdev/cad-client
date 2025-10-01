@@ -1,37 +1,8 @@
 import { Component, ChangeDetectionStrategy, signal, ElementRef, ViewChild, AfterViewInit, OnDestroy, inject, output } from '@angular/core';
 import { EntityProperties, EntityPropertyCalculator, PropertyUpdate } from '../../types/entity-properties';
 import { AnchorPoint, AnchorPointCalculator, SnapResult } from '../../types/anchor-points';
-
-export interface Point {
-  x: number;
-  y: number;
-}
-
-export interface Line {
-  id: string;
-  start: Point;
-  end: Point;
-  color: string;
-  width: number;
-}
-
-export interface Rectangle {
-  id: string;
-  start: Point;
-  end: Point;
-  color: string;
-  width: number;
-  fillColor?: string;
-}
-
-export interface Circle {
-  id: string;
-  center: Point;
-  radius: number;
-  color: string;
-  width: number;
-  fillColor?: string;
-}
+import { Line, Rectangle, Circle, Point } from '../../types/geometry';
+import { AppStore } from '../../state/app.store';
 
 @Component({
   selector: 'app-canvas',
@@ -43,6 +14,7 @@ export interface Circle {
 export class CanvasComponent implements AfterViewInit, OnDestroy {
   @ViewChild('canvasElement', { static: true }) canvasElement!: ElementRef<HTMLCanvasElement>;
   
+  private appStore = inject(AppStore);
   private elementRef = inject(ElementRef);
   
   protected readonly isDrawing = signal(false);
@@ -66,8 +38,6 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
 
   // Anchor point state
   protected readonly showAnchorPoints = signal(true);
-  protected readonly snapEnabled = signal(true);
-  protected readonly orthoEnabled = signal(false);
   protected readonly currentSnapPoint = signal<AnchorPoint | null>(null);
   protected readonly hoveredAnchorPoints = signal<AnchorPoint[]>([]);
   protected readonly anchorPointSize = 4; // Size of anchor point indicators
@@ -79,8 +49,6 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
 
   // Output events
   entitySelected = output<EntityProperties | null>();
-  snapStateChanged = output<boolean>();
-  mousePositionChanged = output<{x: number, y: number}>();
 
   ngAfterViewInit() {
     this.initializeCanvas();
@@ -266,7 +234,7 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
     const point = { x, y };
 
     // Emit mouse position for footer display
-    this.mousePositionChanged.emit({ x: Math.round(x), y: Math.round(y) });
+    this.appStore.updateMousePosition({ x: Math.round(x), y: Math.round(y) });
 
     if (this.isResizing() && this.selectedEntity()) {
       // Handle resizing selected entity with snapping
@@ -553,16 +521,15 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
   }
 
   toggleSnap() {
-    this.snapEnabled.update(enabled => !enabled);
-    this.snapStateChanged.emit(this.snapEnabled());
+    this.appStore.toggleSnap();
   }
 
   toggleOrtho() {
-    this.orthoEnabled.update(enabled => !enabled);
+    this.appStore.toggleOrtho() 
   }
 
   private applyOrthoConstraint(start: Point, end: Point): Point {
-    if (!this.orthoEnabled()) {
+    if (!this.appStore.orthoEnabled()) {
       return end;
     }
 
@@ -1191,7 +1158,7 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
    * Apply snapping to a point if near anchor points
    */
   private applySnapping(point: Point, excludeEntityId?: string): SnapResult {
-    if (!this.snapEnabled()) {
+    if (!this.appStore.snapEnabled()) {
       return {
         snapped: false,
         snapPoint: point

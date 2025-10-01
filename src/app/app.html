@@ -13,9 +13,7 @@
     <div class="center-panel">
       <app-canvas
         #canvasComponent
-        (entitySelected)="onEntitySelected($event)"
-        (snapStateChanged)="onSnapStateChanged($event)"
-        (mousePositionChanged)="onMousePositionChanged($event)">
+        (entitySelected)="onEntitySelected($event)">
       </app-canvas>
     </div>
 
@@ -29,11 +27,5 @@
   </div>
   
   <!-- Footer across the bottom -->
-  <app-footer
-    [snapEnabled]="snapEnabled()"
-    [orthoEnabled]="orthoEnabled()"
-    [mousePosition]="mousePosition()"
-    (snapToggled)="onSnapToggled()"
-    (orthoToggled)="onOrthoToggled()">
-  </app-footer>
+  <app-footer/>
 </div>

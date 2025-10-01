@@ -1,4 +1,4 @@
-import { Point, Line, Rectangle, Circle } from '../components/canvas/canvas';
+import { Point, Line, Rectangle, Circle } from "./geometry";
 
 export interface AnchorPoint {
   id: string;

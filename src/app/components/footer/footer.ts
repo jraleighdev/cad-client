@@ -1,4 +1,5 @@
-import { Component, ChangeDetectionStrategy, input, output } from '@angular/core';
+import { Component, ChangeDetectionStrategy, input, output, inject, computed } from '@angular/core';
+import { AppStore } from '../../state/app.store';
 
 @Component({
   selector: 'app-footer',
@@ -8,19 +9,23 @@ import { Component, ChangeDetectionStrategy, input, output } from '@angular/core
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class FooterComponent {
-  snapEnabled = input<boolean>(true);
-  orthoEnabled = input<boolean>(false);
-  mousePosition = input<{x: number, y: number}>({x: 0, y: 0});
+  appStore = inject(AppStore);
 
-  snapToggled = output<void>();
-  orthoToggled = output<void>();
+  mousePositionDisplay = computed(() => 
+    `X: ${this.appStore.mousePosition().x}, Y: ${this.appStore.mousePosition().y}`
+  );
+  snapDisplay = computed(() => 
+    this.appStore.snapEnabled() ? 'On' : 'Off'
+  );
+  orthoDisplay = computed(() => 
+    this.appStore.orthoEnabled() ? 'On' : 'Off'
+  );
 
   onSnapClick() {
-    console.log('hello');
-    this.snapToggled.emit();
+    this.appStore.toggleSnap();
   }
 
   onOrthoClick() {
-    this.orthoToggled.emit();
+    this.appStore.toggleOrtho();
   }
 }

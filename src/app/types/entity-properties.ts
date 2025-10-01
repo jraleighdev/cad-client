@@ -1,4 +1,4 @@
-import { Line, Rectangle, Circle, Point } from '../components/canvas/canvas';
+import { Line, Rectangle, Circle, Point } from "./geometry";
 
 export interface EntityProperties {
   type: 'line' | 'rectangle' | 'circle' | null;
