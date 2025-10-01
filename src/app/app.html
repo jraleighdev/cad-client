@@ -1,28 +1,26 @@
 <div class="app-container">
   <!-- Header across the top -->
-  <app-header></app-header>
+  <app-header/>
   
   <!-- Main content area between header and footer -->
   <div class="main-content">
     <!-- Toolbar on the left -->
     <div class="left-panel">
-      <app-toolbar (toolSelected)="onToolSelected($event)"></app-toolbar>
+      <app-toolbar (toolSelected)="onToolSelected($event)"/>
     </div>
     
     <!-- Canvas in the center -->
     <div class="center-panel">
       <app-canvas
         #canvasComponent
-        (entitySelected)="onEntitySelected($event)">
-      </app-canvas>
+        (entitySelected)="onEntitySelected($event)"/>
     </div>
 
     <!-- Properties panel on the right -->
     <div class="right-panel">
       <app-properties-panel
         [selectedEntity]="selectedEntityProperties()"
-        (propertyChanged)="onPropertyChanged($event)">
-      </app-properties-panel>
+        (propertyChanged)="onPropertyChanged($event)"/>
     </div>
   </div>
   
