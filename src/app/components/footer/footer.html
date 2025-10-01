@@ -1,7 +1,9 @@
 <footer class="footer">
   <div class="footer-content">
     <span class="coordinates">{{mousePositionDisplay()}}</span>
-    <span class="snap-status clickable" (click)="onSnapClick()">Snap: {{ snapDisplay() }}</span>
-    <span class="ortho-status clickable" (click)="onOrthoClick()">Ortho: {{ orthoDisplay() }}</span>
+    <div class="footer-right">
+      <span class="snap-status clickable" (click)="onSnapClick()">Snap: {{ snapDisplay() }}</span>
+      <span class="ortho-status clickable" (click)="onOrthoClick()">Ortho: {{ orthoDisplay() }}</span>
+    </div>
   </div>
 </footer>
