@@ -67,6 +67,7 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
   // Anchor point state
   protected readonly showAnchorPoints = signal(true);
   protected readonly snapEnabled = signal(true);
+  protected readonly orthoEnabled = signal(false);
   protected readonly currentSnapPoint = signal<AnchorPoint | null>(null);
   protected readonly hoveredAnchorPoints = signal<AnchorPoint[]>([]);
   protected readonly anchorPointSize = 4; // Size of anchor point indicators
@@ -137,6 +138,11 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
       if (event.ctrlKey && event.key.toLowerCase() === 'b') {
         event.preventDefault();
         this.toggleSnap();
+      }
+      // F8 to toggle ortho
+      if (event.key === 'F8') {
+        event.preventDefault();
+        this.toggleOrtho();
       }
     };
 
@@ -294,15 +300,21 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
       this.moveSelectedEntityToPosition(snappedPosition);
       this.setCanvasCursor('move');
     } else if (this.isDrawing() && this.startPoint) {
-      // Handle drawing preview with snapping
+      // Handle drawing preview with snapping and ortho constraint
       const snapResult = this.applySnapping(point);
-      const snappedPoint = snapResult.snapPoint;
+      let snappedPoint = snapResult.snapPoint;
+
+      // Apply ortho constraint after snapping for line tool
+      const tool = this.currentTool();
+      if (tool === 'line') {
+        snappedPoint = this.applyOrthoConstraint(this.startPoint, snappedPoint);
+      }
+
       this.currentSnapPoint.set(snapResult.anchorPoint || null);
       this.hoveredAnchorPoints.set([]);
 
       this.redrawCanvas();
 
-      const tool = this.currentTool();
       if (tool === 'line') {
         this.drawPreviewLine(this.startPoint, snappedPoint);
       } else if (tool === 'rectangle') {
@@ -356,18 +368,21 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
       this.currentSnapPoint.set(null);
       this.setCanvasCursor('crosshair');
     } else if (this.isDrawing() && this.startPoint) {
-      // Finish drawing with snapping
+      // Finish drawing with snapping and ortho constraint
       const rect = this.canvasElement.nativeElement.getBoundingClientRect();
       const x = event.clientX - rect.left;
       const y = event.clientY - rect.top;
       const endPoint = { x, y };
 
       const snapResult = this.applySnapping(endPoint);
-      const snappedEndPoint = snapResult.snapPoint;
+      let snappedEndPoint = snapResult.snapPoint;
 
       const tool = this.currentTool();
-      
+
       if (tool === 'line') {
+        // Apply ortho constraint for line tool
+        snappedEndPoint = this.applyOrthoConstraint(this.startPoint, snappedEndPoint);
+
         const completedLine: Line = {
           id: this.currentLine()?.id || Date.now().toString(),
           start: this.startPoint,
@@ -540,6 +555,28 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
   toggleSnap() {
     this.snapEnabled.update(enabled => !enabled);
     this.snapStateChanged.emit(this.snapEnabled());
+  }
+
+  toggleOrtho() {
+    this.orthoEnabled.update(enabled => !enabled);
+  }
+
+  private applyOrthoConstraint(start: Point, end: Point): Point {
+    if (!this.orthoEnabled()) {
+      return end;
+    }
+
+    const dx = Math.abs(end.x - start.x);
+    const dy = Math.abs(end.y - start.y);
+
+    // Constrain to the axis with greater movement
+    if (dx > dy) {
+      // Horizontal line
+      return { x: end.x, y: start.y };
+    } else {
+      // Vertical line
+      return { x: start.x, y: end.y };
+    }
   }
 
   // Hit testing methods

@@ -31,7 +31,9 @@
   <!-- Footer across the bottom -->
   <app-footer
     [snapEnabled]="snapEnabled()"
+    [orthoEnabled]="orthoEnabled()"
     [mousePosition]="mousePosition()"
-    (snapToggled)="onSnapToggled()">
+    (snapToggled)="onSnapToggled()"
+    (orthoToggled)="onOrthoToggled()">
   </app-footer>
 </div>

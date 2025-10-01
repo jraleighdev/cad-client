@@ -24,6 +24,7 @@ export class App {
   protected readonly title = signal('cad-client');
   protected readonly selectedEntityProperties = signal<EntityProperties | null>(null);
   protected readonly snapEnabled = signal(true);
+  protected readonly orthoEnabled = signal(false);
   protected readonly mousePosition = signal({x: 0, y: 0});
 
   protected onToolSelected(tool: string) {
@@ -53,6 +54,12 @@ export class App {
   protected onSnapToggled() {
     if (this.canvasComponent) {
       this.canvasComponent.toggleSnap();
+    }
+  }
+
+  protected onOrthoToggled() {
+    if (this.canvasComponent) {
+      this.canvasComponent.toggleOrtho();
     }
   }
 }

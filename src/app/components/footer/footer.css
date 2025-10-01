@@ -29,6 +29,11 @@
   font-weight: 500;
 }
 
+.ortho-status {
+  color: #e67e22;
+  font-weight: 500;
+}
+
 .clickable {
   cursor: pointer;
   user-select: none;

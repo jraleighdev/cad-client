@@ -9,12 +9,18 @@ import { Component, ChangeDetectionStrategy, input, output } from '@angular/core
 })
 export class FooterComponent {
   snapEnabled = input<boolean>(true);
+  orthoEnabled = input<boolean>(false);
   mousePosition = input<{x: number, y: number}>({x: 0, y: 0});
 
   snapToggled = output<void>();
+  orthoToggled = output<void>();
 
   onSnapClick() {
     console.log('hello');
     this.snapToggled.emit();
+  }
+
+  onOrthoClick() {
+    this.orthoToggled.emit();
   }
 }
