@@ -7,8 +7,9 @@
         <button class="nav-button" (click)="toggleEditMenu()">Edit</button>
         @if (editMenuOpen()) {
           <div class="dropdown-menu">
-            <button class="dropdown-item" (click)="onCopy()">Copy (Ctrl+C)</button>
+            <button class="dropdown-item" [disabled]="!hasSelectedEntity()" (click)="onCopy()">Copy (Ctrl+C)</button>
             <button class="dropdown-item" [disabled]="!hasClipboardContent" (click)="onPaste()">Paste (Ctrl+V)</button>
+            <button class="dropdown-item" [disabled]="!hasSelectedEntity()" (click)="onDelete()">Delete (Ctrl+D)</button>
           </div>
         }
       </div>

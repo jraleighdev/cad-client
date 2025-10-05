@@ -1,6 +1,10 @@
 <div class="app-container">
   <!-- Header across the top -->
-  <app-header (copy)="onCopy()" (paste)="onPaste()"/>
+  <app-header
+    [hasSelectedEntity]="hasSelectedEntity"
+    (copy)="onCopy()"
+    (paste)="onPaste()"
+    (delete)="onDelete()"/>
   
   <!-- Main content area between header and footer -->
   <div class="main-content">

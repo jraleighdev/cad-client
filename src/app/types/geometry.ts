@@ -9,6 +9,7 @@ export interface Line {
   end: Point;
   color: string;
   width: number;
+  rotation?: number; // Rotation angle in degrees
 }
 
 export interface Rectangle {
@@ -18,6 +19,7 @@ export interface Rectangle {
   color: string;
   width: number;
   fillColor?: string;
+  rotation?: number; // Rotation angle in degrees
 }
 
 export interface Circle {
@@ -27,4 +29,5 @@ export interface Circle {
   color: string;
   width: number;
   fillColor?: string;
+  rotation?: number; // Rotation angle in degrees
 }

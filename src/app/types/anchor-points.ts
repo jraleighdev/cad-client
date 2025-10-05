@@ -35,25 +35,55 @@ export class AnchorPointCalculator {
   private static readonly SNAP_DISTANCE = 10; // pixels
 
   /**
+   * Rotate a point around a center by a given angle in degrees
+   */
+  private static rotatePoint(point: Point, center: Point, angleDegrees: number): Point {
+    const angleRadians = (angleDegrees * Math.PI) / 180;
+    const cos = Math.cos(angleRadians);
+    const sin = Math.sin(angleRadians);
+
+    const translatedX = point.x - center.x;
+    const translatedY = point.y - center.y;
+
+    const rotatedX = translatedX * cos - translatedY * sin;
+    const rotatedY = translatedX * sin + translatedY * cos;
+
+    return {
+      x: rotatedX + center.x,
+      y: rotatedY + center.y
+    };
+  }
+
+  /**
    * Calculate all anchor points for a line
    */
   static calculateLineAnchorPoints(line: Line): AnchorPoint[] {
-    const midpoint = {
-      x: (line.start.x + line.end.x) / 2,
-      y: (line.start.y + line.end.y) / 2
-    };
+    const centerX = (line.start.x + line.end.x) / 2;
+    const centerY = (line.start.y + line.end.y) / 2;
+    const center = { x: centerX, y: centerY };
+
+    let startPoint = line.start;
+    let endPoint = line.end;
+    let midpoint = center;
+
+    // Apply rotation if present
+    if (line.rotation) {
+      startPoint = this.rotatePoint(line.start, center, line.rotation);
+      endPoint = this.rotatePoint(line.end, center, line.rotation);
+      midpoint = this.rotatePoint(midpoint, center, line.rotation);
+    }
 
     return [
       {
         id: `${line.id}-start`,
-        point: line.start,
+        point: startPoint,
         type: 'line-start',
         entityId: line.id,
         entityType: 'line'
       },
       {
         id: `${line.id}-end`,
-        point: line.end,
+        point: endPoint,
         type: 'line-end',
         entityId: line.id,
         entityType: 'line'
@@ -79,32 +109,61 @@ export class AnchorPointCalculator {
     const midX = (minX + maxX) / 2;
     const midY = (minY + maxY) / 2;
 
+    // Calculate center for rotation
+    const width = rectangle.end.x - rectangle.start.x;
+    const height = rectangle.end.y - rectangle.start.y;
+    const centerX = rectangle.start.x + width / 2;
+    const centerY = rectangle.start.y + height / 2;
+    const center = { x: centerX, y: centerY };
+
+    // Define unrotated points
+    let topLeft = { x: minX, y: minY };
+    let topRight = { x: maxX, y: minY };
+    let bottomLeft = { x: minX, y: maxY };
+    let bottomRight = { x: maxX, y: maxY };
+    let topMid = { x: midX, y: minY };
+    let bottomMid = { x: midX, y: maxY };
+    let leftMid = { x: minX, y: midY };
+    let rightMid = { x: maxX, y: midY };
+
+    // Apply rotation if present
+    if (rectangle.rotation) {
+      topLeft = this.rotatePoint(topLeft, center, rectangle.rotation);
+      topRight = this.rotatePoint(topRight, center, rectangle.rotation);
+      bottomLeft = this.rotatePoint(bottomLeft, center, rectangle.rotation);
+      bottomRight = this.rotatePoint(bottomRight, center, rectangle.rotation);
+      topMid = this.rotatePoint(topMid, center, rectangle.rotation);
+      bottomMid = this.rotatePoint(bottomMid, center, rectangle.rotation);
+      leftMid = this.rotatePoint(leftMid, center, rectangle.rotation);
+      rightMid = this.rotatePoint(rightMid, center, rectangle.rotation);
+    }
+
     return [
       // Corner points
       {
         id: `${rectangle.id}-top-left`,
-        point: { x: minX, y: minY },
+        point: topLeft,
         type: 'rect-top-left',
         entityId: rectangle.id,
         entityType: 'rectangle'
       },
       {
         id: `${rectangle.id}-top-right`,
-        point: { x: maxX, y: minY },
+        point: topRight,
         type: 'rect-top-right',
         entityId: rectangle.id,
         entityType: 'rectangle'
       },
       {
         id: `${rectangle.id}-bottom-left`,
-        point: { x: minX, y: maxY },
+        point: bottomLeft,
         type: 'rect-bottom-left',
         entityId: rectangle.id,
         entityType: 'rectangle'
       },
       {
         id: `${rectangle.id}-bottom-right`,
-        point: { x: maxX, y: maxY },
+        point: bottomRight,
         type: 'rect-bottom-right',
         entityId: rectangle.id,
         entityType: 'rectangle'
@@ -112,28 +171,28 @@ export class AnchorPointCalculator {
       // Midpoint of edges
       {
         id: `${rectangle.id}-top-mid`,
-        point: { x: midX, y: minY },
+        point: topMid,
         type: 'rect-top-mid',
         entityId: rectangle.id,
         entityType: 'rectangle'
       },
       {
         id: `${rectangle.id}-bottom-mid`,
-        point: { x: midX, y: maxY },
+        point: bottomMid,
         type: 'rect-bottom-mid',
         entityId: rectangle.id,
         entityType: 'rectangle'
       },
       {
         id: `${rectangle.id}-left-mid`,
-        point: { x: minX, y: midY },
+        point: leftMid,
         type: 'rect-left-mid',
         entityId: rectangle.id,
         entityType: 'rectangle'
       },
       {
         id: `${rectangle.id}-right-mid`,
-        point: { x: maxX, y: midY },
+        point: rightMid,
         type: 'rect-right-mid',
         entityId: rectangle.id,
         entityType: 'rectangle'
@@ -145,10 +204,16 @@ export class AnchorPointCalculator {
    * Calculate all anchor points for a circle
    */
   static calculateCircleAnchorPoints(circle: Circle): AnchorPoint[] {
+    // Circle center doesn't change with rotation, but we keep consistency
+    let centerPoint = circle.center;
+
+    // Note: Circle rotation doesn't affect the center point position
+    // but we maintain the same structure for consistency
+
     return [
       {
         id: `${circle.id}-center`,
-        point: circle.center,
+        point: centerPoint,
         type: 'circle-center',
         entityId: circle.id,
         entityType: 'circle'

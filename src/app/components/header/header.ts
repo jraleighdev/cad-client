@@ -1,4 +1,4 @@
-import { Component, ChangeDetectionStrategy, signal, inject, output } from '@angular/core';
+import { Component, ChangeDetectionStrategy, signal, inject, output, input } from '@angular/core';
 import { AppStore } from '../../state/app.store';
 
 @Component({
@@ -13,8 +13,11 @@ export class HeaderComponent {
 
   protected readonly editMenuOpen = signal(false);
 
+  hasSelectedEntity = input<boolean>(false);
+
   copy = output<void>();
   paste = output<void>();
+  delete = output<void>();
 
   protected get hasClipboardContent(): boolean {
     return this.appStore.clipboardEntity() !== null;
@@ -35,6 +38,11 @@ export class HeaderComponent {
 
   protected onPaste() {
     this.paste.emit();
+    this.closeEditMenu();
+  }
+
+  protected onDelete() {
+    this.delete.emit();
     this.closeEditMenu();
   }
 }

@@ -28,13 +28,24 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
   
   // Selection state
   protected readonly selectedEntity = signal<{type: 'line' | 'rectangle' | 'circle', id: string} | null>(null);
+  protected readonly selectedEntities = signal<Array<{type: 'line' | 'rectangle' | 'circle', id: string}>>([]);
   protected readonly isDragging = signal(false);
   protected readonly dragOffset = signal<Point | null>(null);
+
+  // Selection box state
+  protected readonly isDrawingSelectionBox = signal(false);
+  protected readonly selectionBoxStart = signal<Point | null>(null);
+  protected readonly selectionBoxEnd = signal<Point | null>(null);
   
   // Resize handle state
   protected readonly isResizing = signal(false);
   protected readonly resizeHandle = signal<string | null>(null);
   protected readonly handleSize = 8; // Size of resize handles in pixels
+
+  // Rotation handle state
+  protected readonly isRotating = signal(false);
+  protected readonly rotationStartAngle = signal<number>(0);
+  protected readonly rotationHandleSize = 8; // Size of rotation handle in pixels
 
   // Anchor point state
   protected readonly showAnchorPoints = signal(true);
@@ -125,6 +136,11 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
         event.preventDefault();
         this.pasteEntity();
       }
+      // Ctrl+D to delete
+      if (event.ctrlKey && event.key.toLowerCase() === 'd') {
+        event.preventDefault();
+        this.deleteSelectedEntities();
+      }
     };
 
     document.addEventListener('keydown', this.keyboardListener);
@@ -173,7 +189,20 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
     const point = { x, y };
     
     if (tool === 'select') {
-      // Check if clicking on a resize handle first
+      // Check if clicking on rotation handle first
+      if (this.isPointNearRotationHandle(point)) {
+        this.isRotating.set(true);
+        const center = this.getEntityCenter();
+        if (center) {
+          // Calculate initial angle from center to mouse position
+          const angle = Math.atan2(point.y - center.y, point.x - center.x) * (180 / Math.PI);
+          this.rotationStartAngle.set(angle);
+        }
+        this.setCanvasCursor('grabbing');
+        return;
+      }
+
+      // Check if clicking on a resize handle
       const handle = this.getHandleAtPoint(point);
       if (handle) {
         this.isResizing.set(true);
@@ -182,15 +211,16 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
         this.setCanvasCursor('grabbing');
         return;
       }
-      
+
       // Handle selection and dragging
       const entity = this.findEntityAtPoint(point);
-      this.selectedEntity.set(entity);
-
-      // Emit entity selection event
-      this.emitEntitySelection(entity);
 
       if (entity) {
+        // Clicking on an entity
+        this.selectedEntity.set(entity);
+        this.selectedEntities.set([entity]);
+        this.emitEntitySelection(entity);
+
         this.isDragging.set(true);
         this.startPoint = point;
 
@@ -200,6 +230,16 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
           const offset = this.calculateDragOffset(point, entityData);
           this.dragOffset.set(offset);
         }
+      } else {
+        // Clicking on empty space - start selection box
+        this.selectedEntity.set(null);
+        this.selectedEntities.set([]);
+        this.emitEntitySelection(null);
+
+        this.isDrawingSelectionBox.set(true);
+        this.selectionBoxStart.set(point);
+        this.selectionBoxEnd.set(point);
+        this.startPoint = point;
       }
     } else if (tool === 'line' || tool === 'rectangle' || tool === 'circle') {
       // Handle drawing tools with snapping
@@ -252,7 +292,28 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
     // Emit mouse position for footer display
     this.appStore.updateMousePosition({ x: Math.round(x), y: Math.round(y) });
 
-    if (this.isResizing() && this.selectedEntity()) {
+    if (this.isDrawingSelectionBox()) {
+      // Handle drawing selection box
+      this.selectionBoxEnd.set(point);
+      this.redrawCanvas();
+      this.drawSelectionBox();
+    } else if (this.isRotating() && this.selectedEntity()) {
+      // Handle rotating selected entity
+      const center = this.getEntityCenter();
+      if (center) {
+        // Calculate current angle from center to mouse position
+        const currentAngle = Math.atan2(point.y - center.y, point.x - center.x) * (180 / Math.PI);
+        const startAngle = this.rotationStartAngle();
+        const angleDelta = currentAngle - startAngle;
+
+        // Update entity rotation
+        this.rotateSelectedEntity(angleDelta);
+
+        // Update start angle for next frame
+        this.rotationStartAngle.set(currentAngle);
+      }
+      this.setCanvasCursor('grabbing');
+    } else if (this.isResizing() && this.selectedEntity()) {
       // Handle resizing selected entity with snapping
       const selected = this.selectedEntity();
       const snapResult = this.applySnapping(point, selected?.id);
@@ -263,8 +324,9 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
       this.resizeSelectedEntity(snappedPoint);
       this.setCanvasCursor('grabbing');
     } else if (this.isDragging() && this.selectedEntity()) {
-      // Handle dragging selected entity with snapping
+      // Handle dragging selected entity with entity-to-entity snapping
       const selected = this.selectedEntity();
+      if (!selected) return;
 
       // Calculate the new position based on drag offset first
       const offset = this.dragOffset();
@@ -275,13 +337,26 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
         y: point.y - offset.y
       };
 
-      // Apply snapping to the calculated position
-      const snapResult = this.applySnapping(newPosition, selected?.id);
-      const snappedPosition = snapResult.snapPoint;
-      this.currentSnapPoint.set(snapResult.anchorPoint || null);
-      this.hoveredAnchorPoints.set([]);
+      // First move entity to the new position (temporarily)
+      this.moveSelectedEntityToPosition(newPosition);
 
-      this.moveSelectedEntityToPosition(snappedPosition);
+      // Try entity-to-entity snapping (snap anchor points between entities)
+      const entitySnap = this.applyEntitySnapping(selected.id, selected.type);
+
+      if (entitySnap) {
+        // Apply the snap offset
+        const snappedPosition = {
+          x: newPosition.x + entitySnap.offset.x,
+          y: newPosition.y + entitySnap.offset.y
+        };
+        this.moveSelectedEntityToPosition(snappedPosition);
+        this.currentSnapPoint.set(entitySnap.snapPoint);
+      } else {
+        // No entity snap found, keep the position as calculated
+        this.currentSnapPoint.set(null);
+      }
+
+      this.hoveredAnchorPoints.set([]);
       this.setCanvasCursor('move');
     } else if (this.isDrawing() && this.startPoint) {
       // Handle drawing preview with snapping and ortho constraint
@@ -307,13 +382,18 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
         this.drawPreviewCircle(this.startPoint, snappedPoint);
       }
     } else {
-      // Update cursor when hovering over handles (not dragging/resizing)
-      const handle = this.getHandleAtPoint(point);
-      if (handle) {
-        this.setCanvasCursor(this.cursorForHandle(handle));
+      // Update cursor when hovering over handles (not dragging/resizing/rotating)
+      if (this.isPointNearRotationHandle(point)) {
+        this.setCanvasCursor('grab');
         this.currentSnapPoint.set(null);
         this.hoveredAnchorPoints.set([]);
       } else {
+        const handle = this.getHandleAtPoint(point);
+        if (handle) {
+          this.setCanvasCursor(this.cursorForHandle(handle));
+          this.currentSnapPoint.set(null);
+          this.hoveredAnchorPoints.set([]);
+        } else {
         // When just hovering (not actively drawing/moving/resizing), only show hover state
         // Don't set currentSnapPoint unless we're actually performing an operation
         this.currentSnapPoint.set(null);
@@ -334,12 +414,46 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
         this.redrawCanvas();
 
         this.setCanvasCursor('crosshair');
+        }
       }
     }
   }
 
   protected onMouseUp(event: MouseEvent) {
-    if (this.isResizing()) {
+    if (this.isDrawingSelectionBox()) {
+      // Finish selection box
+      this.isDrawingSelectionBox.set(false);
+      const start = this.selectionBoxStart();
+      const end = this.selectionBoxEnd();
+
+      if (start && end) {
+        // Find all entities within the selection box
+        const selected = this.findEntitiesInBox(start, end);
+        this.selectedEntities.set(selected);
+
+        // If only one entity selected, set it as the selected entity for properties panel
+        if (selected.length === 1) {
+          this.selectedEntity.set(selected[0]);
+          this.emitEntitySelection(selected[0]);
+        } else if (selected.length === 0) {
+          this.selectedEntity.set(null);
+          this.emitEntitySelection(null);
+        } else {
+          // Multiple entities selected - for now just show the first one
+          // TODO: Update properties panel to handle multiple selections
+          this.selectedEntity.set(selected[0]);
+          this.emitEntitySelection(selected[0]);
+        }
+      }
+
+      this.selectionBoxStart.set(null);
+      this.selectionBoxEnd.set(null);
+      this.redrawCanvas();
+    } else if (this.isRotating()) {
+      // Finish rotating
+      this.isRotating.set(false);
+      this.setCanvasCursor('crosshair');
+    } else if (this.isResizing()) {
       // Finish resizing
       this.isResizing.set(false);
       this.resizeHandle.set(null);
@@ -411,18 +525,41 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
     this.redrawCanvas();
   }
 
+  private drawSelectionBox() {
+    if (!this.ctx) return;
+
+    const start = this.selectionBoxStart();
+    const end = this.selectionBoxEnd();
+
+    if (!start || !end) return;
+
+    const width = end.x - start.x;
+    const height = end.y - start.y;
+
+    // Draw semi-transparent fill
+    this.ctx.fillStyle = 'rgba(0, 123, 255, 0.1)';
+    this.ctx.fillRect(start.x, start.y, width, height);
+
+    // Draw dashed border
+    this.ctx.strokeStyle = '#007bff';
+    this.ctx.lineWidth = 1;
+    this.ctx.setLineDash([5, 5]);
+    this.ctx.strokeRect(start.x, start.y, width, height);
+    this.ctx.setLineDash([]);
+  }
+
   private drawPreviewLine(start: Point, end: Point) {
     if (!this.ctx) return;
-    
+
     this.ctx.strokeStyle = '#000000';
     this.ctx.lineWidth = 2;
     this.ctx.setLineDash([5, 5]);
-    
+
     this.ctx.beginPath();
     this.ctx.moveTo(start.x, start.y);
     this.ctx.lineTo(end.x, end.y);
     this.ctx.stroke();
-    
+
     this.ctx.setLineDash([]);
   }
 
@@ -476,44 +613,80 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
 
   private drawAllLines() {
     if (!this.ctx) return;
-    
+
     this.lines().forEach(line => {
+      this.ctx!.save();
+
+      // Apply rotation if present
+      if (line.rotation) {
+        const centerX = (line.start.x + line.end.x) / 2;
+        const centerY = (line.start.y + line.end.y) / 2;
+        this.ctx!.translate(centerX, centerY);
+        this.ctx!.rotate((line.rotation * Math.PI) / 180);
+        this.ctx!.translate(-centerX, -centerY);
+      }
+
       this.ctx!.strokeStyle = line.color;
       this.ctx!.lineWidth = line.width;
       this.ctx!.setLineDash([]);
-      
+
       this.ctx!.beginPath();
       this.ctx!.moveTo(line.start.x, line.start.y);
       this.ctx!.lineTo(line.end.x, line.end.y);
       this.ctx!.stroke();
+
+      this.ctx!.restore();
     });
   }
 
   private drawAllRectangles() {
     if (!this.ctx) return;
-    
+
     this.rectangles().forEach(rectangle => {
+      this.ctx!.save();
+
       const width = rectangle.end.x - rectangle.start.x;
       const height = rectangle.end.y - rectangle.start.y;
-      
+
+      // Apply rotation if present
+      if (rectangle.rotation) {
+        const centerX = rectangle.start.x + width / 2;
+        const centerY = rectangle.start.y + height / 2;
+        this.ctx!.translate(centerX, centerY);
+        this.ctx!.rotate((rectangle.rotation * Math.PI) / 180);
+        this.ctx!.translate(-centerX, -centerY);
+      }
+
       // Draw fill if specified
       if (rectangle.fillColor && rectangle.fillColor !== 'transparent') {
         this.ctx!.fillStyle = rectangle.fillColor;
         this.ctx!.fillRect(rectangle.start.x, rectangle.start.y, width, height);
       }
-      
+
       // Draw stroke
       this.ctx!.strokeStyle = rectangle.color;
       this.ctx!.lineWidth = rectangle.width;
       this.ctx!.setLineDash([]);
       this.ctx!.strokeRect(rectangle.start.x, rectangle.start.y, width, height);
+
+      this.ctx!.restore();
     });
   }
 
   private drawAllCircles() {
     if (!this.ctx) return;
-    
+
     this.circles().forEach(circle => {
+      this.ctx!.save();
+
+      // Apply rotation if present (note: rotation doesn't visually affect circles,
+      // but we store it for consistency)
+      if (circle.rotation) {
+        this.ctx!.translate(circle.center.x, circle.center.y);
+        this.ctx!.rotate((circle.rotation * Math.PI) / 180);
+        this.ctx!.translate(-circle.center.x, -circle.center.y);
+      }
+
       // Draw fill if specified
       if (circle.fillColor && circle.fillColor !== 'transparent') {
         this.ctx!.fillStyle = circle.fillColor;
@@ -521,7 +694,7 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
         this.ctx!.arc(circle.center.x, circle.center.y, circle.radius, 0, 2 * Math.PI);
         this.ctx!.fill();
       }
-      
+
       // Draw stroke
       this.ctx!.strokeStyle = circle.color;
       this.ctx!.lineWidth = circle.width;
@@ -529,6 +702,8 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
       this.ctx!.beginPath();
       this.ctx!.arc(circle.center.x, circle.center.y, circle.radius, 0, 2 * Math.PI);
       this.ctx!.stroke();
+
+      this.ctx!.restore();
     });
   }
 
@@ -542,6 +717,40 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
 
   toggleOrtho() {
     this.appStore.toggleOrtho()
+  }
+
+  deleteSelectedEntities() {
+    const selected = this.selectedEntities();
+    if (selected.length === 0) return;
+
+    // Track deleted entities for potential undo
+    const deletedEntities = selected.map(entity => {
+      const entityData = this.getEntityData(entity);
+      if (!entityData) return null;
+
+      return {
+        type: entity.type,
+        data: entityData
+      };
+    }).filter(e => e !== null) as Array<{type: 'line' | 'rectangle' | 'circle', data: Line | Rectangle | Circle}>;
+
+    // Add to delete history
+    this.appStore.addDeletedEntities(deletedEntities);
+
+    // Remove entities from their respective arrays
+    const selectedIds = new Set(selected.map(e => e.id));
+
+    this.lines.update(lines => lines.filter(line => !selectedIds.has(line.id)));
+    this.rectangles.update(rectangles => rectangles.filter(rect => !selectedIds.has(rect.id)));
+    this.circles.update(circles => circles.filter(circle => !selectedIds.has(circle.id)));
+
+    // Clear selection
+    this.selectedEntity.set(null);
+    this.selectedEntities.set([]);
+    this.emitEntitySelection(null);
+
+    // Redraw canvas
+    this.redrawCanvas();
   }
 
   copySelectedEntity() {
@@ -689,22 +898,87 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
         return { type: 'circle', id: circle.id };
       }
     }
-    
+
     // Check rectangles
     for (const rectangle of this.rectangles()) {
       if (this.hitTestRectangle(point, rectangle)) {
         return { type: 'rectangle', id: rectangle.id };
       }
     }
-    
+
     // Check lines
     for (const line of this.lines()) {
       if (this.hitTestLine(point, line)) {
         return { type: 'line', id: line.id };
       }
     }
-    
+
     return null;
+  }
+
+  private findEntitiesInBox(start: Point, end: Point): Array<{type: 'line' | 'rectangle' | 'circle', id: string}> {
+    const selected: Array<{type: 'line' | 'rectangle' | 'circle', id: string}> = [];
+
+    // Normalize box coordinates
+    const minX = Math.min(start.x, end.x);
+    const maxX = Math.max(start.x, end.x);
+    const minY = Math.min(start.y, end.y);
+    const maxY = Math.max(start.y, end.y);
+
+    // Check lines
+    for (const line of this.lines()) {
+      if (this.isLineInBox(line, minX, maxX, minY, maxY)) {
+        selected.push({ type: 'line', id: line.id });
+      }
+    }
+
+    // Check rectangles
+    for (const rectangle of this.rectangles()) {
+      if (this.isRectangleInBox(rectangle, minX, maxX, minY, maxY)) {
+        selected.push({ type: 'rectangle', id: rectangle.id });
+      }
+    }
+
+    // Check circles
+    for (const circle of this.circles()) {
+      if (this.isCircleInBox(circle, minX, maxX, minY, maxY)) {
+        selected.push({ type: 'circle', id: circle.id });
+      }
+    }
+
+    return selected;
+  }
+
+  private isLineInBox(line: Line, minX: number, maxX: number, minY: number, maxY: number): boolean {
+    // Check if both endpoints are within the box
+    const startInBox = line.start.x >= minX && line.start.x <= maxX &&
+                       line.start.y >= minY && line.start.y <= maxY;
+    const endInBox = line.end.x >= minX && line.end.x <= maxX &&
+                     line.end.y >= minY && line.end.y <= maxY;
+
+    return startInBox && endInBox;
+  }
+
+  private isRectangleInBox(rectangle: Rectangle, minX: number, maxX: number, minY: number, maxY: number): boolean {
+    // Check if all corners of the rectangle are within the box
+    const rectMinX = Math.min(rectangle.start.x, rectangle.end.x);
+    const rectMaxX = Math.max(rectangle.start.x, rectangle.end.x);
+    const rectMinY = Math.min(rectangle.start.y, rectangle.end.y);
+    const rectMaxY = Math.max(rectangle.start.y, rectangle.end.y);
+
+    return rectMinX >= minX && rectMaxX <= maxX &&
+           rectMinY >= minY && rectMaxY <= maxY;
+  }
+
+  private isCircleInBox(circle: Circle, minX: number, maxX: number, minY: number, maxY: number): boolean {
+    // Check if the entire circle (center +/- radius) is within the box
+    const circleMinX = circle.center.x - circle.radius;
+    const circleMaxX = circle.center.x + circle.radius;
+    const circleMinY = circle.center.y - circle.radius;
+    const circleMaxY = circle.center.y + circle.radius;
+
+    return circleMinX >= minX && circleMaxX <= maxX &&
+           circleMinY >= minY && circleMaxY <= maxY;
   }
 
   // Helper methods for entity manipulation
@@ -863,11 +1137,8 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
   }
 
   private drawSelectionHighlight() {
-    const selected = this.selectedEntity();
-    if (!selected) return;
-
-    const entity = this.getEntityData(selected);
-    if (!entity) return;
+    const selectedEntities = this.selectedEntities();
+    if (selectedEntities.length === 0) return;
 
     if (!this.ctx) return;
 
@@ -875,28 +1146,73 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
     this.ctx.lineWidth = 2;
     this.ctx.setLineDash([5, 5]);
 
-    if (selected.type === 'line') {
-      const line = entity as Line;
-      this.ctx.beginPath();
-      this.ctx.moveTo(line.start.x, line.start.y);
-      this.ctx.lineTo(line.end.x, line.end.y);
-      this.ctx.stroke();
-    } else if (selected.type === 'rectangle') {
-      const rectangle = entity as Rectangle;
-      const width = rectangle.end.x - rectangle.start.x;
-      const height = rectangle.end.y - rectangle.start.y;
-      this.ctx.strokeRect(rectangle.start.x, rectangle.start.y, width, height);
-    } else if (selected.type === 'circle') {
-      const circle = entity as Circle;
-      this.ctx.beginPath();
-      this.ctx.arc(circle.center.x, circle.center.y, circle.radius, 0, 2 * Math.PI);
-      this.ctx.stroke();
+    // Draw highlight for all selected entities
+    for (const selected of selectedEntities) {
+      const entity = this.getEntityData(selected);
+      if (!entity) continue;
+
+      this.ctx.save();
+
+      if (selected.type === 'line') {
+        const line = entity as Line;
+
+        // Apply rotation if present
+        if (line.rotation) {
+          const centerX = (line.start.x + line.end.x) / 2;
+          const centerY = (line.start.y + line.end.y) / 2;
+          this.ctx.translate(centerX, centerY);
+          this.ctx.rotate((line.rotation * Math.PI) / 180);
+          this.ctx.translate(-centerX, -centerY);
+        }
+
+        this.ctx.beginPath();
+        this.ctx.moveTo(line.start.x, line.start.y);
+        this.ctx.lineTo(line.end.x, line.end.y);
+        this.ctx.stroke();
+      } else if (selected.type === 'rectangle') {
+        const rectangle = entity as Rectangle;
+        const width = rectangle.end.x - rectangle.start.x;
+        const height = rectangle.end.y - rectangle.start.y;
+
+        // Apply rotation if present
+        if (rectangle.rotation) {
+          const centerX = rectangle.start.x + width / 2;
+          const centerY = rectangle.start.y + height / 2;
+          this.ctx.translate(centerX, centerY);
+          this.ctx.rotate((rectangle.rotation * Math.PI) / 180);
+          this.ctx.translate(-centerX, -centerY);
+        }
+
+        this.ctx.strokeRect(rectangle.start.x, rectangle.start.y, width, height);
+      } else if (selected.type === 'circle') {
+        const circle = entity as Circle;
+
+        // Apply rotation if present (for consistency, though circles don't visually rotate)
+        if (circle.rotation) {
+          this.ctx.translate(circle.center.x, circle.center.y);
+          this.ctx.rotate((circle.rotation * Math.PI) / 180);
+          this.ctx.translate(-circle.center.x, -circle.center.y);
+        }
+
+        this.ctx.beginPath();
+        this.ctx.arc(circle.center.x, circle.center.y, circle.radius, 0, 2 * Math.PI);
+        this.ctx.stroke();
+      }
+
+      this.ctx.restore();
     }
 
     this.ctx.setLineDash([]);
-    
-    // Draw resize handles
-    this.drawResizeHandles(selected, entity);
+
+    // Only draw resize handles and rotation handle if a single entity is selected
+    const selected = this.selectedEntity();
+    if (selected && selectedEntities.length === 1) {
+      const entity = this.getEntityData(selected);
+      if (entity) {
+        this.drawResizeHandles(selected, entity);
+        this.drawRotationHandle();
+      }
+    }
   }
 
   private drawResizeHandles(selected: {type: 'line' | 'rectangle' | 'circle', id: string}, entity: Line | Rectangle | Circle) {
@@ -908,30 +1224,92 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
 
     if (selected.type === 'line') {
       const line = entity as Line;
-      this.drawHandle(line.start.x, line.start.y, 'line-start');
-      this.drawHandle(line.end.x, line.end.y, 'line-end');
+
+      // Apply rotation to handle positions
+      if (line.rotation) {
+        const centerX = (line.start.x + line.end.x) / 2;
+        const centerY = (line.start.y + line.start.y) / 2;
+        const startRotated = this.rotatePoint(line.start, { x: centerX, y: centerY }, line.rotation);
+        const endRotated = this.rotatePoint(line.end, { x: centerX, y: centerY }, line.rotation);
+        this.drawHandle(startRotated.x, startRotated.y, 'line-start');
+        this.drawHandle(endRotated.x, endRotated.y, 'line-end');
+      } else {
+        this.drawHandle(line.start.x, line.start.y, 'line-start');
+        this.drawHandle(line.end.x, line.end.y, 'line-end');
+      }
     } else if (selected.type === 'rectangle') {
       const rectangle = entity as Rectangle;
       const minX = Math.min(rectangle.start.x, rectangle.end.x);
       const maxX = Math.max(rectangle.start.x, rectangle.end.x);
       const minY = Math.min(rectangle.start.y, rectangle.end.y);
       const maxY = Math.max(rectangle.start.y, rectangle.end.y);
-      
-      // Corner handles
-      this.drawHandle(minX, minY, 'rect-top-left');
-      this.drawHandle(maxX, minY, 'rect-top-right');
-      this.drawHandle(minX, maxY, 'rect-bottom-left');
-      this.drawHandle(maxX, maxY, 'rect-bottom-right');
+
+      // Apply rotation to corner handles
+      if (rectangle.rotation) {
+        const width = rectangle.end.x - rectangle.start.x;
+        const height = rectangle.end.y - rectangle.start.y;
+        const centerX = rectangle.start.x + width / 2;
+        const centerY = rectangle.start.y + height / 2;
+        const center = { x: centerX, y: centerY };
+
+        const topLeft = this.rotatePoint({ x: minX, y: minY }, center, rectangle.rotation);
+        const topRight = this.rotatePoint({ x: maxX, y: minY }, center, rectangle.rotation);
+        const bottomLeft = this.rotatePoint({ x: minX, y: maxY }, center, rectangle.rotation);
+        const bottomRight = this.rotatePoint({ x: maxX, y: maxY }, center, rectangle.rotation);
+
+        this.drawHandle(topLeft.x, topLeft.y, 'rect-top-left');
+        this.drawHandle(topRight.x, topRight.y, 'rect-top-right');
+        this.drawHandle(bottomLeft.x, bottomLeft.y, 'rect-bottom-left');
+        this.drawHandle(bottomRight.x, bottomRight.y, 'rect-bottom-right');
+      } else {
+        this.drawHandle(minX, minY, 'rect-top-left');
+        this.drawHandle(maxX, minY, 'rect-top-right');
+        this.drawHandle(minX, maxY, 'rect-bottom-left');
+        this.drawHandle(maxX, maxY, 'rect-bottom-right');
+      }
     } else if (selected.type === 'circle') {
       const circle = entity as Circle;
       const { x: cx, y: cy } = circle.center;
       const r = circle.radius;
-      // Axis-aligned handles: left/right (x-axis), top/bottom (y-axis)
-      this.drawHandle(cx - r, cy, 'circle-left');
-      this.drawHandle(cx + r, cy, 'circle-right');
-      this.drawHandle(cx, cy - r, 'circle-top');
-      this.drawHandle(cx, cy + r, 'circle-bottom');
+
+      // Apply rotation to axis handles
+      if (circle.rotation) {
+        const left = this.rotatePoint({ x: cx - r, y: cy }, circle.center, circle.rotation);
+        const right = this.rotatePoint({ x: cx + r, y: cy }, circle.center, circle.rotation);
+        const top = this.rotatePoint({ x: cx, y: cy - r }, circle.center, circle.rotation);
+        const bottom = this.rotatePoint({ x: cx, y: cy + r }, circle.center, circle.rotation);
+
+        this.drawHandle(left.x, left.y, 'circle-left');
+        this.drawHandle(right.x, right.y, 'circle-right');
+        this.drawHandle(top.x, top.y, 'circle-top');
+        this.drawHandle(bottom.x, bottom.y, 'circle-bottom');
+      } else {
+        this.drawHandle(cx - r, cy, 'circle-left');
+        this.drawHandle(cx + r, cy, 'circle-right');
+        this.drawHandle(cx, cy - r, 'circle-top');
+        this.drawHandle(cx, cy + r, 'circle-bottom');
+      }
     }
+  }
+
+  /**
+   * Rotate a point around a center by a given angle in degrees
+   */
+  private rotatePoint(point: Point, center: Point, angleDegrees: number): Point {
+    const angleRadians = (angleDegrees * Math.PI) / 180;
+    const cos = Math.cos(angleRadians);
+    const sin = Math.sin(angleRadians);
+
+    const translatedX = point.x - center.x;
+    const translatedY = point.y - center.y;
+
+    const rotatedX = translatedX * cos - translatedY * sin;
+    const rotatedY = translatedX * sin + translatedY * cos;
+
+    return {
+      x: rotatedX + center.x,
+      y: rotatedY + center.y
+    };
   }
 
   private drawHandle(x: number, y: number, _handleId: string) {
@@ -945,6 +1323,39 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
     this.ctx.strokeRect(x - halfSize, y - halfSize, size, size);
   }
 
+  /**
+   * Draw rotation handle for selected entity
+   * Shows a vertical line with a green circle at the top
+   */
+  private drawRotationHandle() {
+    if (!this.ctx) return;
+
+    const center = this.getEntityCenter();
+    const handlePos = this.getRotationHandlePosition();
+
+    if (!center || !handlePos) return;
+
+    // Draw vertical line from center/top of entity to handle
+    this.ctx.strokeStyle = '#00ff00'; // Green color
+    this.ctx.lineWidth = 2;
+    this.ctx.setLineDash([]);
+
+    this.ctx.beginPath();
+    this.ctx.moveTo(center.x, center.y);
+    this.ctx.lineTo(handlePos.x, handlePos.y);
+    this.ctx.stroke();
+
+    // Draw green circle at handle position
+    this.ctx.fillStyle = '#00ff00'; // Green fill
+    this.ctx.strokeStyle = '#ffffff'; // White border
+    this.ctx.lineWidth = 1;
+
+    this.ctx.beginPath();
+    this.ctx.arc(handlePos.x, handlePos.y, this.rotationHandleSize, 0, 2 * Math.PI);
+    this.ctx.fill();
+    this.ctx.stroke();
+  }
+
   private getHandleAtPoint(point: Point): string | null {
     const selected = this.selectedEntity();
     if (!selected) return null;
@@ -954,27 +1365,73 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
 
     if (selected.type === 'line') {
       const line = entity as Line;
-      if (this.isPointNearHandle(point, line.start)) return 'line-start';
-      if (this.isPointNearHandle(point, line.end)) return 'line-end';
+
+      // Apply rotation to handle positions for hit testing
+      if (line.rotation) {
+        const centerX = (line.start.x + line.end.x) / 2;
+        const centerY = (line.start.y + line.end.y) / 2;
+        const center = { x: centerX, y: centerY };
+        const startRotated = this.rotatePoint(line.start, center, line.rotation);
+        const endRotated = this.rotatePoint(line.end, center, line.rotation);
+
+        if (this.isPointNearHandle(point, startRotated)) return 'line-start';
+        if (this.isPointNearHandle(point, endRotated)) return 'line-end';
+      } else {
+        if (this.isPointNearHandle(point, line.start)) return 'line-start';
+        if (this.isPointNearHandle(point, line.end)) return 'line-end';
+      }
     } else if (selected.type === 'rectangle') {
       const rectangle = entity as Rectangle;
       const minX = Math.min(rectangle.start.x, rectangle.end.x);
       const maxX = Math.max(rectangle.start.x, rectangle.end.x);
       const minY = Math.min(rectangle.start.y, rectangle.end.y);
       const maxY = Math.max(rectangle.start.y, rectangle.end.y);
-      
-      if (this.isPointNearHandle(point, { x: minX, y: minY })) return 'rect-top-left';
-      if (this.isPointNearHandle(point, { x: maxX, y: minY })) return 'rect-top-right';
-      if (this.isPointNearHandle(point, { x: minX, y: maxY })) return 'rect-bottom-left';
-      if (this.isPointNearHandle(point, { x: maxX, y: maxY })) return 'rect-bottom-right';
+
+      // Apply rotation to corner handles for hit testing
+      if (rectangle.rotation) {
+        const width = rectangle.end.x - rectangle.start.x;
+        const height = rectangle.end.y - rectangle.start.y;
+        const centerX = rectangle.start.x + width / 2;
+        const centerY = rectangle.start.y + height / 2;
+        const center = { x: centerX, y: centerY };
+
+        const topLeft = this.rotatePoint({ x: minX, y: minY }, center, rectangle.rotation);
+        const topRight = this.rotatePoint({ x: maxX, y: minY }, center, rectangle.rotation);
+        const bottomLeft = this.rotatePoint({ x: minX, y: maxY }, center, rectangle.rotation);
+        const bottomRight = this.rotatePoint({ x: maxX, y: maxY }, center, rectangle.rotation);
+
+        if (this.isPointNearHandle(point, topLeft)) return 'rect-top-left';
+        if (this.isPointNearHandle(point, topRight)) return 'rect-top-right';
+        if (this.isPointNearHandle(point, bottomLeft)) return 'rect-bottom-left';
+        if (this.isPointNearHandle(point, bottomRight)) return 'rect-bottom-right';
+      } else {
+        if (this.isPointNearHandle(point, { x: minX, y: minY })) return 'rect-top-left';
+        if (this.isPointNearHandle(point, { x: maxX, y: minY })) return 'rect-top-right';
+        if (this.isPointNearHandle(point, { x: minX, y: maxY })) return 'rect-bottom-left';
+        if (this.isPointNearHandle(point, { x: maxX, y: maxY })) return 'rect-bottom-right';
+      }
     } else if (selected.type === 'circle') {
       const circle = entity as Circle;
       const { x: cx, y: cy } = circle.center;
       const r = circle.radius;
-      if (this.isPointNearHandle(point, { x: cx - r, y: cy })) return 'circle-left';
-      if (this.isPointNearHandle(point, { x: cx + r, y: cy })) return 'circle-right';
-      if (this.isPointNearHandle(point, { x: cx, y: cy - r })) return 'circle-top';
-      if (this.isPointNearHandle(point, { x: cx, y: cy + r })) return 'circle-bottom';
+
+      // Apply rotation to axis handles for hit testing
+      if (circle.rotation) {
+        const left = this.rotatePoint({ x: cx - r, y: cy }, circle.center, circle.rotation);
+        const right = this.rotatePoint({ x: cx + r, y: cy }, circle.center, circle.rotation);
+        const top = this.rotatePoint({ x: cx, y: cy - r }, circle.center, circle.rotation);
+        const bottom = this.rotatePoint({ x: cx, y: cy + r }, circle.center, circle.rotation);
+
+        if (this.isPointNearHandle(point, left)) return 'circle-left';
+        if (this.isPointNearHandle(point, right)) return 'circle-right';
+        if (this.isPointNearHandle(point, top)) return 'circle-top';
+        if (this.isPointNearHandle(point, bottom)) return 'circle-bottom';
+      } else {
+        if (this.isPointNearHandle(point, { x: cx - r, y: cy })) return 'circle-left';
+        if (this.isPointNearHandle(point, { x: cx + r, y: cy })) return 'circle-right';
+        if (this.isPointNearHandle(point, { x: cx, y: cy - r })) return 'circle-top';
+        if (this.isPointNearHandle(point, { x: cx, y: cy + r })) return 'circle-bottom';
+      }
     }
 
     return null;
@@ -985,6 +1442,106 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
       Math.pow(point.x - handlePoint.x, 2) + Math.pow(point.y - handlePoint.y, 2)
     );
     return distance <= this.handleSize;
+  }
+
+  /**
+   * Get the position of the rotation handle for the selected entity
+   */
+  private getRotationHandlePosition(): Point | null {
+    const selected = this.selectedEntity();
+    if (!selected) return null;
+
+    const entity = this.getEntityData(selected);
+    if (!entity) return null;
+
+    // Calculate the center and top-middle point of the entity
+    if (selected.type === 'line') {
+      const line = entity as Line;
+      // For lines, place rotation handle at the midpoint, extending upward
+      const centerX = (line.start.x + line.end.x) / 2;
+      const centerY = (line.start.y + line.end.y) / 2;
+      const center = { x: centerX, y: centerY };
+      const handlePos = { x: centerX, y: centerY - 30 }; // 30 pixels above center
+
+      // Apply rotation to the handle position
+      if (line.rotation) {
+        return this.rotatePoint(handlePos, center, line.rotation);
+      }
+      return handlePos;
+    } else if (selected.type === 'rectangle') {
+      const rectangle = entity as Rectangle;
+      const width = rectangle.end.x - rectangle.start.x;
+      const height = rectangle.end.y - rectangle.start.y;
+      const centerX = rectangle.start.x + width / 2;
+      const centerY = rectangle.start.y + height / 2;
+      const center = { x: centerX, y: centerY };
+      const minY = Math.min(rectangle.start.y, rectangle.end.y);
+      const handlePos = { x: centerX, y: minY - 30 }; // 30 pixels above top edge
+
+      // Apply rotation to the handle position
+      if (rectangle.rotation) {
+        return this.rotatePoint(handlePos, center, rectangle.rotation);
+      }
+      return handlePos;
+    } else if (selected.type === 'circle') {
+      const circle = entity as Circle;
+      const handlePos = { x: circle.center.x, y: circle.center.y - circle.radius - 30 }; // 30 pixels above top of circle
+
+      // Apply rotation to the handle position
+      if (circle.rotation) {
+        return this.rotatePoint(handlePos, circle.center, circle.rotation);
+      }
+      return handlePos;
+    }
+
+    return null;
+  }
+
+  /**
+   * Check if a point is near the rotation handle
+   */
+  private isPointNearRotationHandle(point: Point): boolean {
+    const handlePos = this.getRotationHandlePosition();
+    if (!handlePos) return false;
+
+    const distance = Math.sqrt(
+      Math.pow(point.x - handlePos.x, 2) + Math.pow(point.y - handlePos.y, 2)
+    );
+    return distance <= this.rotationHandleSize;
+  }
+
+  /**
+   * Get the center point of the selected entity for rotation
+   */
+  private getEntityCenter(): Point | null {
+    const selected = this.selectedEntity();
+    if (!selected) return null;
+
+    const entity = this.getEntityData(selected);
+    if (!entity) return null;
+
+    if (selected.type === 'line') {
+      const line = entity as Line;
+      return {
+        x: (line.start.x + line.end.x) / 2,
+        y: (line.start.y + line.end.y) / 2
+      };
+    } else if (selected.type === 'rectangle') {
+      const rectangle = entity as Rectangle;
+      const minX = Math.min(rectangle.start.x, rectangle.end.x);
+      const maxX = Math.max(rectangle.start.x, rectangle.end.x);
+      const minY = Math.min(rectangle.start.y, rectangle.end.y);
+      const maxY = Math.max(rectangle.start.y, rectangle.end.y);
+      return {
+        x: (minX + maxX) / 2,
+        y: (minY + maxY) / 2
+      };
+    } else if (selected.type === 'circle') {
+      const circle = entity as Circle;
+      return circle.center;
+    }
+
+    return null;
   }
 
   private cursorForHandle(handle: string): string {
@@ -1104,7 +1661,7 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
   }
 
   private resizeCircle(circleId: string, handle: string, point: Point) {
-    this.circles.update(circles => 
+    this.circles.update(circles =>
       circles.map(circle => {
         if (circle.id !== circleId) return circle;
 
@@ -1129,6 +1686,48 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
         return { ...circle, radius: Math.max(0, newRadius) };
       })
     );
+  }
+
+  /**
+   * Rotate the selected entity by the given angle delta
+   */
+  private rotateSelectedEntity(angleDelta: number) {
+    const selected = this.selectedEntity();
+    if (!selected) return;
+
+    if (selected.type === 'line') {
+      this.lines.update(lines =>
+        lines.map(line => {
+          if (line.id !== selected.id) return line;
+          const currentRotation = line.rotation || 0;
+          return { ...line, rotation: currentRotation + angleDelta };
+        })
+      );
+    } else if (selected.type === 'rectangle') {
+      this.rectangles.update(rectangles =>
+        rectangles.map(rectangle => {
+          if (rectangle.id !== selected.id) return rectangle;
+          const currentRotation = rectangle.rotation || 0;
+          return { ...rectangle, rotation: currentRotation + angleDelta };
+        })
+      );
+    } else if (selected.type === 'circle') {
+      this.circles.update(circles =>
+        circles.map(circle => {
+          if (circle.id !== selected.id) return circle;
+          const currentRotation = circle.rotation || 0;
+          return { ...circle, rotation: currentRotation + angleDelta };
+        })
+      );
+    }
+
+    this.redrawCanvas();
+
+    // Emit updated properties after rotating
+    const selectedEntityInfo = this.selectedEntity();
+    if (selectedEntityInfo) {
+      this.emitEntitySelection(selectedEntityInfo);
+    }
   }
 
   /**
@@ -1258,6 +1857,69 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
       this.circles(),
       excludeEntityId
     );
+  }
+
+  /**
+   * Apply snapping for entity-to-entity based on anchor points
+   * Returns the offset needed to snap the entity's anchor points to other entities
+   */
+  private applyEntitySnapping(entityId: string, entityType: 'line' | 'rectangle' | 'circle'): { offset: Point, snapPoint: AnchorPoint | null } | null {
+    if (!this.appStore.snapEnabled()) {
+      return null;
+    }
+
+    const entity = this.getEntityData({ type: entityType, id: entityId });
+    if (!entity) return null;
+
+    // Get all anchor points for the moving entity
+    let movingEntityAnchors: AnchorPoint[] = [];
+    if (entityType === 'line') {
+      movingEntityAnchors = AnchorPointCalculator.calculateLineAnchorPoints(entity as Line);
+    } else if (entityType === 'rectangle') {
+      movingEntityAnchors = AnchorPointCalculator.calculateRectangleAnchorPoints(entity as Rectangle);
+    } else if (entityType === 'circle') {
+      movingEntityAnchors = AnchorPointCalculator.calculateCircleAnchorPoints(entity as Circle);
+    }
+
+    // Get all anchor points from other entities
+    const otherAnchors = AnchorPointCalculator.getAllAnchorPoints(
+      this.lines(),
+      this.rectangles(),
+      this.circles()
+    ).filter(anchor => anchor.entityId !== entityId);
+
+    // Find the closest pair of anchor points
+    let minDistance = AnchorPointCalculator.getSnapDistance();
+    let bestMovingAnchor: AnchorPoint | null = null;
+    let bestTargetAnchor: AnchorPoint | null = null;
+
+    for (const movingAnchor of movingEntityAnchors) {
+      for (const targetAnchor of otherAnchors) {
+        const distance = Math.sqrt(
+          Math.pow(targetAnchor.point.x - movingAnchor.point.x, 2) +
+          Math.pow(targetAnchor.point.y - movingAnchor.point.y, 2)
+        );
+
+        if (distance < minDistance) {
+          minDistance = distance;
+          bestMovingAnchor = movingAnchor;
+          bestTargetAnchor = targetAnchor;
+        }
+      }
+    }
+
+    // If we found a snap, calculate the offset needed
+    if (bestMovingAnchor && bestTargetAnchor) {
+      return {
+        offset: {
+          x: bestTargetAnchor.point.x - bestMovingAnchor.point.x,
+          y: bestTargetAnchor.point.y - bestMovingAnchor.point.y
+        },
+        snapPoint: bestTargetAnchor
+      };
+    }
+
+    return null;
   }
 
   /**

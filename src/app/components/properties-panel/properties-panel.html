@@ -41,5 +41,16 @@
         }
       </div>
     </div>
+    <div class="property-group">
+      <label>Rotate:</label>
+      <div class="dimension-inputs" [class.narrow]="isNarrow()">
+        <input type="number"
+               placeholder="Angle (°)"
+               [value]="rotation()"
+               [disabled]="!hasEntity()"
+               (blur)="onRotationChange($event)"
+               step="1">
+      </div>
+    </div>
   </div>
 </div>

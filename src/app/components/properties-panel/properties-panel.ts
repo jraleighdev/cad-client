@@ -95,6 +95,11 @@ export class PropertiesPanelComponent {
     return this.selectedEntity() !== null;
   });
 
+  protected readonly rotation = computed(() => {
+    const entity = this.selectedEntity();
+    return entity?.rotation ?? 0;
+  });
+
   @HostListener('document:mousemove', ['$event'])
   onMouseMove(event: MouseEvent) {
     if (this.isResizing()) {
@@ -187,7 +192,16 @@ export class PropertiesPanelComponent {
     this.emitPropertyUpdate({ dimensions });
   }
 
-  private emitPropertyUpdate(update: Partial<Pick<EntityProperties, 'position' | 'dimensions'>>) {
+  protected onRotationChange(event: Event) {
+    const input = event.target as HTMLInputElement;
+    const value = parseFloat(input.value);
+
+    if (isNaN(value)) return;
+
+    this.emitPropertyUpdate({ rotation: value });
+  }
+
+  private emitPropertyUpdate(update: Partial<Pick<EntityProperties, 'position' | 'dimensions' | 'rotation'>>) {
     const entity = this.selectedEntity();
     if (!entity?.id || !entity?.type) return;
 

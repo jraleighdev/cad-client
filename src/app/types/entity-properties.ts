@@ -11,6 +11,7 @@ export interface EntityProperties {
     diameter?: number;      // Circle
     radius?: number;        // Circle
   };
+  rotation?: number;        // Rotation angle in degrees
 }
 
 export interface PropertyUpdate {
@@ -24,6 +25,7 @@ export interface PropertyUpdate {
     diameter?: number;
     radius?: number;
   };
+  rotation?: number;        // Rotation angle in degrees
 }
 
 export class EntityPropertyCalculator {
@@ -76,7 +78,8 @@ export class EntityPropertyCalculator {
       position: { x: Math.round(closestPoint.x * 100) / 100, y: Math.round(closestPoint.y * 100) / 100 },
       dimensions: {
         length: Math.round(length * 100) / 100
-      }
+      },
+      rotation: line.rotation || 0
     };
   }
 
@@ -110,7 +113,8 @@ export class EntityPropertyCalculator {
       dimensions: {
         width: Math.round(width * 100) / 100,
         height: Math.round(height * 100) / 100
-      }
+      },
+      rotation: rectangle.rotation || 0
     };
   }
 
@@ -130,7 +134,8 @@ export class EntityPropertyCalculator {
       dimensions: {
         radius: Math.round(circle.radius * 100) / 100,
         diameter: Math.round((circle.radius * 2) * 100) / 100
-      }
+      },
+      rotation: circle.rotation || 0
     };
   }
 
@@ -213,7 +218,8 @@ export class EntityPropertyCalculator {
     return {
       ...line,
       start: newPositionScreen,
-      end: { x: newEndX, y: newEndY }
+      end: { x: newEndX, y: newEndY },
+      rotation: properties.rotation !== undefined ? properties.rotation : line.rotation
     };
   }
 
@@ -233,7 +239,8 @@ export class EntityPropertyCalculator {
     return {
       ...rectangle,
       start: newPositionScreen,
-      end: newEndScreen
+      end: newEndScreen,
+      rotation: properties.rotation !== undefined ? properties.rotation : rectangle.rotation
     };
   }
 
@@ -246,7 +253,8 @@ export class EntityPropertyCalculator {
     return {
       ...circle,
       center: newCenterScreen,
-      radius: properties.dimensions.radius
+      radius: properties.dimensions.radius,
+      rotation: properties.rotation !== undefined ? properties.rotation : circle.rotation
     };
   }
 }

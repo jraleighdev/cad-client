@@ -51,4 +51,14 @@ export class App {
       this.canvasComponent.pasteEntity();
     }
   }
+
+  protected onDelete() {
+    if (this.canvasComponent) {
+      this.canvasComponent.deleteSelectedEntities();
+    }
+  }
+
+  protected get hasSelectedEntity(): boolean {
+    return this.selectedEntityProperties() !== null;
+  }
 }
