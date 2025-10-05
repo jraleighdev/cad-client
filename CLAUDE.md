@@ -135,4 +135,4 @@ This is an Angular 20+ CAD client application built with:
 
 ### App State
 
-- State Shared among components should be added to the app.store.ts
+- State Shared among components should be added to the state/app.store.ts

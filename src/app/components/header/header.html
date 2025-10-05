@@ -3,7 +3,15 @@
     <h1>CAD Client</h1>
     <nav class="header-nav">
       <button class="nav-button">File</button>
-      <button class="nav-button">Edit</button>
+      <div class="dropdown">
+        <button class="nav-button" (click)="toggleEditMenu()">Edit</button>
+        @if (editMenuOpen()) {
+          <div class="dropdown-menu">
+            <button class="dropdown-item" (click)="onCopy()">Copy (Ctrl+C)</button>
+            <button class="dropdown-item" [disabled]="!hasClipboardContent" (click)="onPaste()">Paste (Ctrl+V)</button>
+          </div>
+        }
+      </div>
       <button class="nav-button">View</button>
       <button class="nav-button">Tools</button>
       <button class="nav-button">Help</button>

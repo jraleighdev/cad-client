@@ -39,4 +39,16 @@ export class App {
       this.canvasComponent.updateEntityFromProperties(update);
     }
   }
+
+  protected onCopy() {
+    if (this.canvasComponent) {
+      this.canvasComponent.copySelectedEntity();
+    }
+  }
+
+  protected onPaste() {
+    if (this.canvasComponent) {
+      this.canvasComponent.pasteEntity();
+    }
+  }
 }

@@ -42,6 +42,9 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
   protected readonly hoveredAnchorPoints = signal<AnchorPoint[]>([]);
   protected readonly anchorPointSize = 4; // Size of anchor point indicators
 
+  // Cursor tracking for paste operations
+  private lastCursorPosition = signal<Point | null>(null);
+
   private ctx: CanvasRenderingContext2D | null = null;
   private startPoint: Point | null = null;
   private resizeObserver: ResizeObserver | null = null;
@@ -111,6 +114,16 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
       if (event.key === 'F8') {
         event.preventDefault();
         this.toggleOrtho();
+      }
+      // Ctrl+C to copy
+      if (event.ctrlKey && event.key.toLowerCase() === 'c') {
+        event.preventDefault();
+        this.copySelectedEntity();
+      }
+      // Ctrl+V to paste
+      if (event.ctrlKey && event.key.toLowerCase() === 'v') {
+        event.preventDefault();
+        this.pasteEntity();
       }
     };
 
@@ -232,6 +245,9 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
     const point = { x, y };
+
+    // Track cursor position for paste operations
+    this.lastCursorPosition.set(point);
 
     // Emit mouse position for footer display
     this.appStore.updateMousePosition({ x: Math.round(x), y: Math.round(y) });
@@ -525,7 +541,77 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
   }
 
   toggleOrtho() {
-    this.appStore.toggleOrtho() 
+    this.appStore.toggleOrtho()
+  }
+
+  copySelectedEntity() {
+    const selected = this.selectedEntity();
+    if (!selected) return;
+
+    const entityData = this.getEntityData(selected);
+    if (entityData) {
+      this.appStore.copyEntity(entityData);
+    }
+  }
+
+  pasteEntity() {
+    const clipboardEntity = this.appStore.clipboardEntity();
+    if (!clipboardEntity) return;
+
+    const cursorPos = this.lastCursorPosition();
+    const newId = Date.now().toString();
+
+    // Calculate entity center and offset from cursor position
+    let pastePosition: Point;
+
+    if (cursorPos) {
+      // Use cursor position if available
+      pastePosition = cursorPos;
+    } else {
+      // Fallback to center of canvas if cursor position not tracked
+      const canvas = this.canvasElement.nativeElement;
+      pastePosition = { x: canvas.width / 2, y: canvas.height / 2 };
+    }
+
+    if ('start' in clipboardEntity && 'end' in clipboardEntity) {
+      // Line or Rectangle - calculate center and offset
+      const centerX = (clipboardEntity.start.x + clipboardEntity.end.x) / 2;
+      const centerY = (clipboardEntity.start.y + clipboardEntity.end.y) / 2;
+      const offsetX = pastePosition.x - centerX;
+      const offsetY = pastePosition.y - centerY;
+
+      const newEntity = {
+        ...clipboardEntity,
+        id: newId,
+        start: { x: clipboardEntity.start.x + offsetX, y: clipboardEntity.start.y + offsetY },
+        end: { x: clipboardEntity.end.x + offsetX, y: clipboardEntity.end.y + offsetY }
+      };
+
+      if ('radius' in clipboardEntity) {
+        // This shouldn't happen as circles don't have start/end
+        return;
+      } else if ('fillColor' in clipboardEntity && clipboardEntity.fillColor !== undefined) {
+        // Rectangle
+        this.rectangles.update(rects => [...rects, newEntity as Rectangle]);
+        this.selectedEntity.set({ type: 'rectangle', id: newId });
+      } else {
+        // Line
+        this.lines.update(lines => [...lines, newEntity as Line]);
+        this.selectedEntity.set({ type: 'line', id: newId });
+      }
+    } else if ('center' in clipboardEntity && 'radius' in clipboardEntity) {
+      // Circle - place center at cursor position
+      const newCircle: Circle = {
+        ...clipboardEntity,
+        id: newId,
+        center: { x: pastePosition.x, y: pastePosition.y }
+      };
+      this.circles.update(circles => [...circles, newCircle]);
+      this.selectedEntity.set({ type: 'circle', id: newId });
+    }
+
+    this.redrawCanvas();
+    this.emitEntitySelection(this.selectedEntity());
   }
 
   private applyOrthoConstraint(start: Point, end: Point): Point {
