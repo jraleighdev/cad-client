@@ -843,51 +843,80 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
 
   // Hit testing methods
   private hitTestLine(point: Point, line: Line, tolerance: number = 5): boolean {
+    // Transform the point to the line's local coordinate system if rotated
+    let testPoint = point;
+    if (line.rotation) {
+      const centerX = (line.start.x + line.end.x) / 2;
+      const centerY = (line.start.y + line.end.y) / 2;
+      const center = { x: centerX, y: centerY };
+      // Reverse rotation to transform click point to line's local space
+      testPoint = this.rotatePoint(point, center, -line.rotation);
+    }
+
     const dx = line.end.x - line.start.x;
     const dy = line.end.y - line.start.y;
     const length = Math.sqrt(dx * dx + dy * dy);
-    
+
     if (length === 0) return false;
-    
-    const t = ((point.x - line.start.x) * dx + (point.y - line.start.y) * dy) / (length * length);
+
+    const t = ((testPoint.x - line.start.x) * dx + (testPoint.y - line.start.y) * dy) / (length * length);
     const tClamped = Math.max(0, Math.min(1, t));
-    
+
     const closestX = line.start.x + tClamped * dx;
     const closestY = line.start.y + tClamped * dy;
-    
+
     const distance = Math.sqrt(
-      Math.pow(point.x - closestX, 2) + Math.pow(point.y - closestY, 2)
+      Math.pow(testPoint.x - closestX, 2) + Math.pow(testPoint.y - closestY, 2)
     );
-    
+
     return distance <= tolerance;
   }
 
   private hitTestRectangle(point: Point, rectangle: Rectangle, tolerance: number = 5): boolean {
+    // Transform the point to the rectangle's local coordinate system if rotated
+    let testPoint = point;
+    if (rectangle.rotation) {
+      const width = rectangle.end.x - rectangle.start.x;
+      const height = rectangle.end.y - rectangle.start.y;
+      const centerX = rectangle.start.x + width / 2;
+      const centerY = rectangle.start.y + height / 2;
+      const center = { x: centerX, y: centerY };
+      // Reverse rotation to transform click point to rectangle's local space
+      testPoint = this.rotatePoint(point, center, -rectangle.rotation);
+    }
+
     const minX = Math.min(rectangle.start.x, rectangle.end.x);
     const maxX = Math.max(rectangle.start.x, rectangle.end.x);
     const minY = Math.min(rectangle.start.y, rectangle.end.y);
     const maxY = Math.max(rectangle.start.y, rectangle.end.y);
-    
+
     // Check if point is within the rectangle bounds
-    if (point.x < minX || point.x > maxX || point.y < minY || point.y > maxY) {
+    if (testPoint.x < minX || testPoint.x > maxX || testPoint.y < minY || testPoint.y > maxY) {
       return false;
     }
-    
+
     // Check if point is near any of the four edges
-    const nearLeftEdge = Math.abs(point.x - minX) <= tolerance;
-    const nearRightEdge = Math.abs(point.x - maxX) <= tolerance;
-    const nearTopEdge = Math.abs(point.y - minY) <= tolerance;
-    const nearBottomEdge = Math.abs(point.y - maxY) <= tolerance;
-    
+    const nearLeftEdge = Math.abs(testPoint.x - minX) <= tolerance;
+    const nearRightEdge = Math.abs(testPoint.x - maxX) <= tolerance;
+    const nearTopEdge = Math.abs(testPoint.y - minY) <= tolerance;
+    const nearBottomEdge = Math.abs(testPoint.y - maxY) <= tolerance;
+
     // Point must be near at least one edge to be considered a hit
     return nearLeftEdge || nearRightEdge || nearTopEdge || nearBottomEdge;
   }
 
   private hitTestCircle(point: Point, circle: Circle, tolerance: number = 5): boolean {
+    // Note: Circles don't visually change with rotation, but for consistency we handle it
+    let testPoint = point;
+    if (circle.rotation) {
+      // Reverse rotation to transform click point to circle's local space
+      testPoint = this.rotatePoint(point, circle.center, -circle.rotation);
+    }
+
     const distance = Math.sqrt(
-      Math.pow(point.x - circle.center.x, 2) + Math.pow(point.y - circle.center.y, 2)
+      Math.pow(testPoint.x - circle.center.x, 2) + Math.pow(testPoint.y - circle.center.y, 2)
     );
-    
+
     return Math.abs(distance - circle.radius) <= tolerance;
   }
 

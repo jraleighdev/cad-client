@@ -47,7 +47,9 @@
 
 ## Select Improvement
 
-- [] User should be able to select a object easily when rotated. When an object is rotated the object is difficult for the user to select.
+- [X] User should be able to select a object easily when rotated. When an object is rotated the object is difficult for the user to select.
+
+
 
 ## Commands
 
