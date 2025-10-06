@@ -45,6 +45,12 @@
 - [X] When resizing an object we should be able to snap to anchor point of a different object.
 - [X] When moving an object we should snap to the to the closest anchor points between to objects. The mouse position doesn't need to be considered.
 
+## Select Improvement
+
+- [] User should be able to select a object easily when rotated. When an object is rotated the object is difficult for the user to select.
+
+## Commands
+
 ## Tool Bar Features
 
 ## Header Features
