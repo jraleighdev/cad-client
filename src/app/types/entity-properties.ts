@@ -12,6 +12,7 @@ export interface EntityProperties {
     radius?: number;        // Circle
   };
   rotation?: number;        // Rotation angle in degrees
+  frozen?: boolean;         // If true, entity cannot be moved or resized
 }
 
 export interface PropertyUpdate {
@@ -26,6 +27,7 @@ export interface PropertyUpdate {
     radius?: number;
   };
   rotation?: number;        // Rotation angle in degrees
+  frozen?: boolean;         // If true, entity cannot be moved or resized
 }
 
 export class EntityPropertyCalculator {
@@ -79,7 +81,8 @@ export class EntityPropertyCalculator {
       dimensions: {
         length: Math.round(length * 100) / 100
       },
-      rotation: line.rotation || 0
+      rotation: line.rotation || 0,
+      frozen: line.frozen || false
     };
   }
 
@@ -114,7 +117,8 @@ export class EntityPropertyCalculator {
         width: Math.round(width * 100) / 100,
         height: Math.round(height * 100) / 100
       },
-      rotation: rectangle.rotation || 0
+      rotation: rectangle.rotation || 0,
+      frozen: rectangle.frozen || false
     };
   }
 
@@ -135,7 +139,8 @@ export class EntityPropertyCalculator {
         radius: Math.round(circle.radius * 100) / 100,
         diameter: Math.round((circle.radius * 2) * 100) / 100
       },
-      rotation: circle.rotation || 0
+      rotation: circle.rotation || 0,
+      frozen: circle.frozen || false
     };
   }
 
@@ -219,7 +224,8 @@ export class EntityPropertyCalculator {
       ...line,
       start: newPositionScreen,
       end: { x: newEndX, y: newEndY },
-      rotation: properties.rotation !== undefined ? properties.rotation : line.rotation
+      rotation: properties.rotation !== undefined ? properties.rotation : line.rotation,
+      frozen: properties.frozen !== undefined ? properties.frozen : line.frozen
     };
   }
 
@@ -240,7 +246,8 @@ export class EntityPropertyCalculator {
       ...rectangle,
       start: newPositionScreen,
       end: newEndScreen,
-      rotation: properties.rotation !== undefined ? properties.rotation : rectangle.rotation
+      rotation: properties.rotation !== undefined ? properties.rotation : rectangle.rotation,
+      frozen: properties.frozen !== undefined ? properties.frozen : rectangle.frozen
     };
   }
 
@@ -254,7 +261,8 @@ export class EntityPropertyCalculator {
       ...circle,
       center: newCenterScreen,
       radius: properties.dimensions.radius,
-      rotation: properties.rotation !== undefined ? properties.rotation : circle.rotation
+      rotation: properties.rotation !== undefined ? properties.rotation : circle.rotation,
+      frozen: properties.frozen !== undefined ? properties.frozen : circle.frozen
     };
   }
 }

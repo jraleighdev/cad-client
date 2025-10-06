@@ -14,10 +14,13 @@ export class HeaderComponent {
   protected readonly editMenuOpen = signal(false);
 
   hasSelectedEntity = input<boolean>(false);
+  isSelectedEntityFrozen = input<boolean>(false);
 
   copy = output<void>();
   paste = output<void>();
   delete = output<void>();
+  freeze = output<void>();
+  unfreeze = output<void>();
 
   protected get hasClipboardContent(): boolean {
     return this.appStore.clipboardEntity() !== null;
@@ -43,6 +46,16 @@ export class HeaderComponent {
 
   protected onDelete() {
     this.delete.emit();
+    this.closeEditMenu();
+  }
+
+  protected onFreeze() {
+    this.freeze.emit();
+    this.closeEditMenu();
+  }
+
+  protected onUnfreeze() {
+    this.unfreeze.emit();
     this.closeEditMenu();
   }
 }

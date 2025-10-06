@@ -10,6 +10,7 @@ export interface Line {
   color: string;
   width: number;
   rotation?: number; // Rotation angle in degrees
+  frozen?: boolean; // If true, entity cannot be moved or resized
 }
 
 export interface Rectangle {
@@ -20,6 +21,7 @@ export interface Rectangle {
   width: number;
   fillColor?: string;
   rotation?: number; // Rotation angle in degrees
+  frozen?: boolean; // If true, entity cannot be moved or resized
 }
 
 export interface Circle {
@@ -30,4 +32,5 @@ export interface Circle {
   width: number;
   fillColor?: string;
   rotation?: number; // Rotation angle in degrees
+  frozen?: boolean; // If true, entity cannot be moved or resized
 }

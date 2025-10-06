@@ -75,3 +75,9 @@
   color: #7f8c8d;
   cursor: not-allowed;
 }
+
+.dropdown-divider {
+  height: 1px;
+  background-color: #34495e;
+  margin: 0.25rem 0;
+}

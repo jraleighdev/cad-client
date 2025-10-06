@@ -100,6 +100,11 @@ export class PropertiesPanelComponent {
     return entity?.rotation ?? 0;
   });
 
+  protected readonly frozen = computed(() => {
+    const entity = this.selectedEntity();
+    return entity?.frozen ?? false;
+  });
+
   @HostListener('document:mousemove', ['$event'])
   onMouseMove(event: MouseEvent) {
     if (this.isResizing()) {
@@ -201,7 +206,14 @@ export class PropertiesPanelComponent {
     this.emitPropertyUpdate({ rotation: value });
   }
 
-  private emitPropertyUpdate(update: Partial<Pick<EntityProperties, 'position' | 'dimensions' | 'rotation'>>) {
+  protected onFrozenChange(event: Event) {
+    const input = event.target as HTMLInputElement;
+    const value = input.checked;
+
+    this.emitPropertyUpdate({ frozen: value });
+  }
+
+  private emitPropertyUpdate(update: Partial<Pick<EntityProperties, 'position' | 'dimensions' | 'rotation' | 'frozen'>>) {
     const entity = this.selectedEntity();
     if (!entity?.id || !entity?.type) return;
 

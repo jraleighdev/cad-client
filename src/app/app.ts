@@ -58,7 +58,23 @@ export class App {
     }
   }
 
+  protected onFreeze() {
+    if (this.canvasComponent) {
+      this.canvasComponent.freezeSelectedEntity();
+    }
+  }
+
+  protected onUnfreeze() {
+    if (this.canvasComponent) {
+      this.canvasComponent.unfreezeSelectedEntity();
+    }
+  }
+
   protected get hasSelectedEntity(): boolean {
     return this.selectedEntityProperties() !== null;
+  }
+
+  protected get isSelectedEntityFrozen(): boolean {
+    return this.selectedEntityProperties()?.frozen ?? false;
   }
 }

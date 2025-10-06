@@ -141,6 +141,19 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
         event.preventDefault();
         this.deleteSelectedEntities();
       }
+      // Ctrl+Q to freeze/unfreeze
+      if (event.ctrlKey && event.key.toLowerCase() === 'q') {
+        event.preventDefault();
+        const selected = this.selectedEntity();
+        if (selected) {
+          const entityData = this.getEntityData(selected);
+          if (entityData?.frozen) {
+            this.unfreezeSelectedEntity();
+          } else {
+            this.freezeSelectedEntity();
+          }
+        }
+      }
     };
 
     document.addEventListener('keydown', this.keyboardListener);
@@ -189,8 +202,12 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
     const point = { x, y };
     
     if (tool === 'select') {
-      // Check if clicking on rotation handle first
-      if (this.isPointNearRotationHandle(point)) {
+      // Check if selected entity is frozen
+      const selected = this.selectedEntity();
+      const isFrozen = selected ? this.getEntityData(selected)?.frozen : false;
+
+      // Check if clicking on rotation handle first (only if not frozen)
+      if (!isFrozen && this.isPointNearRotationHandle(point)) {
         this.isRotating.set(true);
         const center = this.getEntityCenter();
         if (center) {
@@ -202,14 +219,16 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
         return;
       }
 
-      // Check if clicking on a resize handle
-      const handle = this.getHandleAtPoint(point);
-      if (handle) {
-        this.isResizing.set(true);
-        this.resizeHandle.set(handle);
-        this.startPoint = point;
-        this.setCanvasCursor('grabbing');
-        return;
+      // Check if clicking on a resize handle (only if not frozen)
+      if (!isFrozen) {
+        const handle = this.getHandleAtPoint(point);
+        if (handle) {
+          this.isResizing.set(true);
+          this.resizeHandle.set(handle);
+          this.startPoint = point;
+          this.setCanvasCursor('grabbing');
+          return;
+        }
       }
 
       // Handle selection and dragging
@@ -221,12 +240,13 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
         this.selectedEntities.set([entity]);
         this.emitEntitySelection(entity);
 
-        this.isDragging.set(true);
-        this.startPoint = point;
-
-        // Calculate drag offset for smooth movement
+        // Check if entity is frozen before allowing drag
         const entityData = this.getEntityData(entity);
-        if (entityData) {
+        if (entityData && !entityData.frozen) {
+          this.isDragging.set(true);
+          this.startPoint = point;
+
+          // Calculate drag offset for smooth movement
           const offset = this.calculateDragOffset(point, entityData);
           this.dragOffset.set(offset);
         }
@@ -751,6 +771,62 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
 
     // Redraw canvas
     this.redrawCanvas();
+  }
+
+  freezeSelectedEntity() {
+    const selected = this.selectedEntity();
+    if (!selected) return;
+
+    if (selected.type === 'line') {
+      this.lines.update(lines =>
+        lines.map(line =>
+          line.id === selected.id ? { ...line, frozen: true } : line
+        )
+      );
+    } else if (selected.type === 'rectangle') {
+      this.rectangles.update(rectangles =>
+        rectangles.map(rectangle =>
+          rectangle.id === selected.id ? { ...rectangle, frozen: true } : rectangle
+        )
+      );
+    } else if (selected.type === 'circle') {
+      this.circles.update(circles =>
+        circles.map(circle =>
+          circle.id === selected.id ? { ...circle, frozen: true } : circle
+        )
+      );
+    }
+
+    this.redrawCanvas();
+    this.emitEntitySelection(selected);
+  }
+
+  unfreezeSelectedEntity() {
+    const selected = this.selectedEntity();
+    if (!selected) return;
+
+    if (selected.type === 'line') {
+      this.lines.update(lines =>
+        lines.map(line =>
+          line.id === selected.id ? { ...line, frozen: false } : line
+        )
+      );
+    } else if (selected.type === 'rectangle') {
+      this.rectangles.update(rectangles =>
+        rectangles.map(rectangle =>
+          rectangle.id === selected.id ? { ...rectangle, frozen: false } : rectangle
+        )
+      );
+    } else if (selected.type === 'circle') {
+      this.circles.update(circles =>
+        circles.map(circle =>
+          circle.id === selected.id ? { ...circle, frozen: false } : circle
+        )
+      );
+    }
+
+    this.redrawCanvas();
+    this.emitEntitySelection(selected);
   }
 
   copySelectedEntity() {

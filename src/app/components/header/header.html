@@ -10,6 +10,9 @@
             <button class="dropdown-item" [disabled]="!hasSelectedEntity()" (click)="onCopy()">Copy (Ctrl+C)</button>
             <button class="dropdown-item" [disabled]="!hasClipboardContent" (click)="onPaste()">Paste (Ctrl+V)</button>
             <button class="dropdown-item" [disabled]="!hasSelectedEntity()" (click)="onDelete()">Delete (Ctrl+D)</button>
+            <div class="dropdown-divider"></div>
+            <button class="dropdown-item" [disabled]="!hasSelectedEntity() || isSelectedEntityFrozen()" (click)="onFreeze()">Freeze (Ctrl+Q)</button>
+            <button class="dropdown-item" [disabled]="!hasSelectedEntity() || !isSelectedEntityFrozen()" (click)="onUnfreeze()">Unfreeze (Ctrl+Q)</button>
           </div>
         }
       </div>

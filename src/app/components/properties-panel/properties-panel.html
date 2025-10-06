@@ -52,5 +52,14 @@
                step="1">
       </div>
     </div>
+    <div class="property-group checkbox-row">
+      <label>
+        <input type="checkbox"
+               [checked]="frozen()"
+               [disabled]="!hasEntity()"
+               (change)="onFrozenChange($event)">
+        Frozen
+      </label>
+    </div>
   </div>
 </div>

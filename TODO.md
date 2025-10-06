@@ -49,7 +49,13 @@
 
 - [X] User should be able to select a object easily when rotated. When an object is rotated the object is difficult for the user to select.
 
+## Freeze Support
 
+- [] Should be able to freeze objects so that can't be moved or have their size changed.
+- [] Freeze should be added to the edit menu. An object must be selected to be frozen.
+- [] Unfreeze should be added to the edit menu. A frozen object must be selected to be unfroze.
+- [] CTRL+Q should be the shortcut to freeze an object.
+- [] In the properties panel there will be a check box for Frozen under rotate.
 
 ## Commands
 

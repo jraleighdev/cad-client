@@ -2,9 +2,12 @@
   <!-- Header across the top -->
   <app-header
     [hasSelectedEntity]="hasSelectedEntity"
+    [isSelectedEntityFrozen]="isSelectedEntityFrozen"
     (copy)="onCopy()"
     (paste)="onPaste()"
-    (delete)="onDelete()"/>
+    (delete)="onDelete()"
+    (freeze)="onFreeze()"
+    (unfreeze)="onUnfreeze()"/>
   
   <!-- Main content area between header and footer -->
   <div class="main-content">
