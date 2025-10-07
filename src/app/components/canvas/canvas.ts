@@ -192,6 +192,35 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
     }
 
     this.ctx.globalAlpha = 1;
+
+    // Draw origin indicator at bottom-left (0,0)
+    this.ctx.strokeStyle = '#e74c3c';
+    this.ctx.fillStyle = '#e74c3c';
+    this.ctx.lineWidth = 2;
+
+    // Draw X axis indicator (horizontal line from origin)
+    this.ctx.beginPath();
+    this.ctx.moveTo(0, canvas.height);
+    this.ctx.lineTo(40, canvas.height);
+    this.ctx.stroke();
+
+    // Draw Y axis indicator (vertical line from origin)
+    this.ctx.beginPath();
+    this.ctx.moveTo(0, canvas.height);
+    this.ctx.lineTo(0, canvas.height - 40);
+    this.ctx.stroke();
+
+    // Draw origin point
+    this.ctx.beginPath();
+    this.ctx.arc(0, canvas.height, 4, 0, 2 * Math.PI);
+    this.ctx.fill();
+
+    // Draw axis labels
+    this.ctx.font = '12px Arial';
+    this.ctx.fillStyle = '#e74c3c';
+    this.ctx.fillText('X', 45, canvas.height + 4);
+    this.ctx.fillText('Y', 4, canvas.height - 45);
+    this.ctx.fillText('(0,0)', 8, canvas.height - 8);
   }
 
   protected onMouseDown(event: MouseEvent) {
@@ -302,6 +331,7 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
 
   protected onMouseMove(event: MouseEvent) {
     const rect = this.canvasElement.nativeElement.getBoundingClientRect();
+    const canvas = this.canvasElement.nativeElement;
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
     const point = { x, y };
@@ -309,8 +339,10 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
     // Track cursor position for paste operations
     this.lastCursorPosition.set(point);
 
-    // Emit mouse position for footer display
-    this.appStore.updateMousePosition({ x: Math.round(x), y: Math.round(y) });
+    // Emit mouse position for footer display (convert to bottom-left origin)
+    const bottomLeftX = Math.round(x);
+    const bottomLeftY = Math.round(canvas.height - y);
+    this.appStore.updateMousePosition({ x: bottomLeftX, y: bottomLeftY });
 
     if (this.isDrawingSelectionBox()) {
       // Handle drawing selection box

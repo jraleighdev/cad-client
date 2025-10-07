@@ -51,12 +51,16 @@
 
 ## Freeze Support
 
-- [] Should be able to freeze objects so that can't be moved or have their size changed.
-- [] Freeze should be added to the edit menu. An object must be selected to be frozen.
-- [] Unfreeze should be added to the edit menu. A frozen object must be selected to be unfroze.
-- [] CTRL+Q should be the shortcut to freeze an object.
-- [] In the properties panel there will be a check box for Frozen under rotate.
+- [X] Should be able to freeze objects so that can't be moved or have their size changed.
+- [X] Freeze should be added to the edit menu. An object must be selected to be frozen.
+- [X] Unfreeze should be added to the edit menu. A frozen object must be selected to be unfroze.
+- [X] CTRL+Q should be the shortcut to freeze an object.
+- [X] In the properties panel there will be a check box for Frozen under rotate.
 
+## Grid Layout
+
+- [x] The grid cordinate system origin should be the bottom left corner. Currently the origin is the top left corner.  
+ 
 ## Commands
 
 ## Tool Bar Features
