@@ -59,9 +59,12 @@ jobs:
         name: dist
         path: dist/
 
+    - name: Add .nojekyll file
+      run: touch dist/cad-client/browser/.nojekyll
+
     - name: Deploy to GitHub Pages
       uses: peaceiris/actions-gh-pages@v4
       with:
         github_token: ${{ secrets.GITHUB_TOKEN }}
-        publish_dir: ./dist/cad-client/docs
+        publish_dir: ./dist/cad-client/browser
         cname: false
