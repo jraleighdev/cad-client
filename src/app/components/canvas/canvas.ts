@@ -53,6 +53,10 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
   protected readonly hoveredAnchorPoints = signal<AnchorPoint[]>([]);
   protected readonly anchorPointSize = 4; // Size of anchor point indicators
 
+  // Pan state
+  protected readonly isPanning = signal(false);
+  protected readonly panStartPoint = signal<Point | null>(null);
+
   // Cursor tracking for paste operations
   private lastCursorPosition = signal<Point | null>(null);
 
@@ -67,6 +71,7 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
   ngAfterViewInit() {
     this.initializeCanvas();
     this.setupKeyboardListeners();
+    this.setupWheelListener();
   }
 
   ngOnDestroy() {
@@ -154,15 +159,81 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
           }
         }
       }
+      // Ctrl+0 to reset view
+      if (event.ctrlKey && event.key === '0') {
+        event.preventDefault();
+        this.appStore.resetView();
+        this.redrawCanvas();
+      }
     };
 
     document.addEventListener('keydown', this.keyboardListener);
+  }
+
+  private setupWheelListener() {
+    const canvas = this.canvasElement.nativeElement;
+
+    canvas.addEventListener('wheel', (event: WheelEvent) => {
+      event.preventDefault();
+
+      const rect = canvas.getBoundingClientRect();
+      const mouseX = event.clientX - rect.left;
+      const mouseY = event.clientY - rect.top;
+
+      // Calculate zoom change (negative deltaY means zoom in)
+      const zoomFactor = event.deltaY > 0 ? 0.9 : 1.1;
+      const currentZoom = this.appStore.zoom();
+      const newZoom = currentZoom * zoomFactor;
+
+      // Get current pan offset
+      const currentPan = this.appStore.panOffset();
+
+      // Calculate the point in world coordinates before zoom
+      const worldX = (mouseX - currentPan.x) / currentZoom;
+      const worldY = (mouseY - currentPan.y) / currentZoom;
+
+      // Calculate new pan offset to keep mouse position fixed
+      const newPanX = mouseX - worldX * newZoom;
+      const newPanY = mouseY - worldY * newZoom;
+
+      // Update zoom and pan
+      this.appStore.setZoom(newZoom);
+      this.appStore.setPanOffset({ x: newPanX, y: newPanY });
+
+      this.redrawCanvas();
+    }, { passive: false });
   }
 
   private removeKeyboardListeners() {
     if (this.keyboardListener) {
       document.removeEventListener('keydown', this.keyboardListener);
     }
+  }
+
+  /**
+   * Convert screen coordinates to world coordinates (accounting for pan and zoom)
+   */
+  private screenToWorld(screenPoint: Point): Point {
+    const zoom = this.appStore.zoom();
+    const pan = this.appStore.panOffset();
+
+    return {
+      x: (screenPoint.x - pan.x) / zoom,
+      y: (screenPoint.y - pan.y) / zoom
+    };
+  }
+
+  /**
+   * Convert world coordinates to screen coordinates (accounting for pan and zoom)
+   */
+  private worldToScreen(worldPoint: Point): Point {
+    const zoom = this.appStore.zoom();
+    const pan = this.appStore.panOffset();
+
+    return {
+      x: worldPoint.x * zoom + pan.x,
+      y: worldPoint.y * zoom + pan.y
+    };
   }
 
   private drawGrid() {
@@ -226,10 +297,22 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
   protected onMouseDown(event: MouseEvent) {
     const tool = this.currentTool();
     const rect = this.canvasElement.nativeElement.getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
-    const point = { x, y };
-    
+    const screenX = event.clientX - rect.left;
+    const screenY = event.clientY - rect.top;
+    const screenPoint = { x: screenX, y: screenY };
+
+    // Middle mouse button for panning
+    if (event.button === 1) {
+      event.preventDefault();
+      this.isPanning.set(true);
+      this.panStartPoint.set(screenPoint);
+      this.setCanvasCursor('grabbing');
+      return;
+    }
+
+    // Convert to world coordinates for entity interaction
+    const point = this.screenToWorld(screenPoint);
+
     if (tool === 'select') {
       // Check if selected entity is frozen
       const selected = this.selectedEntity();
@@ -332,23 +415,44 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
   protected onMouseMove(event: MouseEvent) {
     const rect = this.canvasElement.nativeElement.getBoundingClientRect();
     const canvas = this.canvasElement.nativeElement;
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
-    const point = { x, y };
+    const screenX = event.clientX - rect.left;
+    const screenY = event.clientY - rect.top;
+    const screenPoint = { x: screenX, y: screenY };
 
-    // Track cursor position for paste operations
+    // Handle panning (use screen coordinates)
+    if (this.isPanning()) {
+      const panStart = this.panStartPoint();
+      if (panStart) {
+        const currentPan = this.appStore.panOffset();
+        const dx = screenPoint.x - panStart.x;
+        const dy = screenPoint.y - panStart.y;
+
+        this.appStore.setPanOffset({
+          x: currentPan.x + dx,
+          y: currentPan.y + dy
+        });
+
+        this.panStartPoint.set(screenPoint);
+        this.redrawCanvas();
+      }
+      return;
+    }
+
+    // Convert to world coordinates for entity interaction
+    const point = this.screenToWorld(screenPoint);
+
+    // Track cursor position for paste operations (in world coordinates)
     this.lastCursorPosition.set(point);
 
-    // Emit mouse position for footer display (convert to bottom-left origin)
-    const bottomLeftX = Math.round(x);
-    const bottomLeftY = Math.round(canvas.height - y);
+    // Emit mouse position for footer display (convert world coords to bottom-left origin)
+    const bottomLeftX = Math.round(point.x);
+    const bottomLeftY = Math.round(canvas.height - point.y);
     this.appStore.updateMousePosition({ x: bottomLeftX, y: bottomLeftY });
 
     if (this.isDrawingSelectionBox()) {
       // Handle drawing selection box
       this.selectionBoxEnd.set(point);
       this.redrawCanvas();
-      this.drawSelectionBox();
     } else if (this.isRotating() && this.selectedEntity()) {
       // Handle rotating selected entity
       const center = this.getEntityCenter();
@@ -424,15 +528,19 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
       this.currentSnapPoint.set(snapResult.anchorPoint || null);
       this.hoveredAnchorPoints.set([]);
 
-      this.redrawCanvas();
-
+      // Update the current drawing entity with the snapped point
       if (tool === 'line') {
-        this.drawPreviewLine(this.startPoint, snappedPoint);
+        this.currentLine.update(line => line ? { ...line, end: snappedPoint } : line);
       } else if (tool === 'rectangle') {
-        this.drawPreviewRectangle(this.startPoint, snappedPoint);
+        this.currentRectangle.update(rect => rect ? { ...rect, end: snappedPoint } : rect);
       } else if (tool === 'circle') {
-        this.drawPreviewCircle(this.startPoint, snappedPoint);
+        const radius = Math.sqrt(
+          Math.pow(snappedPoint.x - this.startPoint.x, 2) + Math.pow(snappedPoint.y - this.startPoint.y, 2)
+        );
+        this.currentCircle.update(circle => circle ? { ...circle, radius } : circle);
       }
+
+      this.redrawCanvas();
     } else {
       // Update cursor when hovering over handles (not dragging/resizing/rotating)
       if (this.isPointNearRotationHandle(point)) {
@@ -472,6 +580,14 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
   }
 
   protected onMouseUp(event: MouseEvent) {
+    // End panning
+    if (this.isPanning()) {
+      this.isPanning.set(false);
+      this.panStartPoint.set(null);
+      this.setCanvasCursor('crosshair');
+      return;
+    }
+
     if (this.isDrawingSelectionBox()) {
       // Finish selection box
       this.isDrawingSelectionBox.set(false);
@@ -520,9 +636,10 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
     } else if (this.isDrawing() && this.startPoint) {
       // Finish drawing with snapping and ortho constraint
       const rect = this.canvasElement.nativeElement.getBoundingClientRect();
-      const x = event.clientX - rect.left;
-      const y = event.clientY - rect.top;
-      const endPoint = { x, y };
+      const screenX = event.clientX - rect.left;
+      const screenY = event.clientY - rect.top;
+      const screenPoint = { x: screenX, y: screenY };
+      const endPoint = this.screenToWorld(screenPoint);
 
       const snapResult = this.applySnapping(endPoint);
       let snappedEndPoint = snapResult.snapPoint;
@@ -577,6 +694,22 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
     this.redrawCanvas();
   }
 
+  private drawCurrentPreview() {
+    if (!this.ctx) return;
+
+    const currentLine = this.currentLine();
+    const currentRectangle = this.currentRectangle();
+    const currentCircle = this.currentCircle();
+
+    if (currentLine && currentLine.start && currentLine.end) {
+      this.drawPreviewLine(currentLine.start, currentLine.end);
+    } else if (currentRectangle && currentRectangle.start && currentRectangle.end) {
+      this.drawPreviewRectangle(currentRectangle.start, currentRectangle.end);
+    } else if (currentCircle && currentCircle.center && currentCircle.radius !== undefined) {
+      this.drawPreviewCircleByRadius(currentCircle.center, currentCircle.radius);
+    }
+  }
+
   private drawSelectionBox() {
     if (!this.ctx) return;
 
@@ -592,10 +725,11 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
     this.ctx.fillStyle = 'rgba(0, 123, 255, 0.1)';
     this.ctx.fillRect(start.x, start.y, width, height);
 
-    // Draw dashed border
+    // Draw dashed border (adjust line width for zoom)
+    const zoom = this.appStore.zoom();
     this.ctx.strokeStyle = '#007bff';
-    this.ctx.lineWidth = 1;
-    this.ctx.setLineDash([5, 5]);
+    this.ctx.lineWidth = 1 / zoom;
+    this.ctx.setLineDash([5 / zoom, 5 / zoom]);
     this.ctx.strokeRect(start.x, start.y, width, height);
     this.ctx.setLineDash([]);
   }
@@ -603,9 +737,10 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
   private drawPreviewLine(start: Point, end: Point) {
     if (!this.ctx) return;
 
+    const zoom = this.appStore.zoom();
     this.ctx.strokeStyle = '#000000';
-    this.ctx.lineWidth = 2;
-    this.ctx.setLineDash([5, 5]);
+    this.ctx.lineWidth = 2 / zoom;
+    this.ctx.setLineDash([5 / zoom, 5 / zoom]);
 
     this.ctx.beginPath();
     this.ctx.moveTo(start.x, start.y);
@@ -617,50 +752,81 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
 
   private drawPreviewRectangle(start: Point, end: Point) {
     if (!this.ctx) return;
-    
+
+    const zoom = this.appStore.zoom();
     const width = end.x - start.x;
     const height = end.y - start.y;
-    
+
     this.ctx.strokeStyle = '#000000';
-    this.ctx.lineWidth = 2;
-    this.ctx.setLineDash([5, 5]);
-    
+    this.ctx.lineWidth = 2 / zoom;
+    this.ctx.setLineDash([5 / zoom, 5 / zoom]);
+
     this.ctx.strokeRect(start.x, start.y, width, height);
-    
+
     this.ctx.setLineDash([]);
   }
 
   private drawPreviewCircle(center: Point, end: Point) {
     if (!this.ctx) return;
-    
+
+    const zoom = this.appStore.zoom();
     const radius = Math.sqrt(
       Math.pow(end.x - center.x, 2) + Math.pow(end.y - center.y, 2)
     );
-    
+
     this.ctx.strokeStyle = '#000000';
-    this.ctx.lineWidth = 2;
-    this.ctx.setLineDash([5, 5]);
-    
+    this.ctx.lineWidth = 2 / zoom;
+    this.ctx.setLineDash([5 / zoom, 5 / zoom]);
+
     this.ctx.beginPath();
     this.ctx.arc(center.x, center.y, radius, 0, 2 * Math.PI);
     this.ctx.stroke();
-    
+
+    this.ctx.setLineDash([]);
+  }
+
+  private drawPreviewCircleByRadius(center: Point, radius: number) {
+    if (!this.ctx) return;
+
+    const zoom = this.appStore.zoom();
+    this.ctx.strokeStyle = '#000000';
+    this.ctx.lineWidth = 2 / zoom;
+    this.ctx.setLineDash([5 / zoom, 5 / zoom]);
+
+    this.ctx.beginPath();
+    this.ctx.arc(center.x, center.y, radius, 0, 2 * Math.PI);
+    this.ctx.stroke();
+
     this.ctx.setLineDash([]);
   }
 
   private redrawCanvas() {
     if (!this.ctx) return;
-    
+
     const canvas = this.canvasElement.nativeElement;
     this.ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
+
+    // Save context state
+    this.ctx.save();
+
+    // Apply pan and zoom transforms
+    const zoom = this.appStore.zoom();
+    const pan = this.appStore.panOffset();
+    this.ctx.translate(pan.x, pan.y);
+    this.ctx.scale(zoom, zoom);
+
     this.drawGrid();
     this.drawAllLines();
     this.drawAllRectangles();
     this.drawAllCircles();
+    this.drawCurrentPreview();
     this.drawSelectionHighlight();
+    this.drawSelectionBox();
     this.drawAnchorPoints();
     this.drawSnapIndicator();
+
+    // Restore context state
+    this.ctx.restore();
   }
 
   private drawAllLines() {
@@ -1279,9 +1445,10 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
 
     if (!this.ctx) return;
 
+    const zoom = this.appStore.zoom();
     this.ctx.strokeStyle = '#007bff';
-    this.ctx.lineWidth = 2;
-    this.ctx.setLineDash([5, 5]);
+    this.ctx.lineWidth = 2 / zoom;
+    this.ctx.setLineDash([5 / zoom, 5 / zoom]);
 
     // Draw highlight for all selected entities
     for (const selected of selectedEntities) {
@@ -1355,9 +1522,10 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
   private drawResizeHandles(selected: {type: 'line' | 'rectangle' | 'circle', id: string}, entity: Line | Rectangle | Circle) {
     if (!this.ctx) return;
 
+    const zoom = this.appStore.zoom();
     this.ctx.fillStyle = '#007bff';
     this.ctx.strokeStyle = '#ffffff';
-    this.ctx.lineWidth = 1;
+    this.ctx.lineWidth = 1 / zoom;
 
     if (selected.type === 'line') {
       const line = entity as Line;
@@ -1452,7 +1620,8 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
   private drawHandle(x: number, y: number, _handleId: string) {
     if (!this.ctx) return;
 
-    const size = this.handleSize;
+    const zoom = this.appStore.zoom();
+    const size = this.handleSize / zoom;
     const halfSize = size / 2;
 
     // Draw handle
@@ -1467,6 +1636,7 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
   private drawRotationHandle() {
     if (!this.ctx) return;
 
+    const zoom = this.appStore.zoom();
     const center = this.getEntityCenter();
     const handlePos = this.getRotationHandlePosition();
 
@@ -1474,7 +1644,7 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
 
     // Draw vertical line from center/top of entity to handle
     this.ctx.strokeStyle = '#00ff00'; // Green color
-    this.ctx.lineWidth = 2;
+    this.ctx.lineWidth = 2 / zoom;
     this.ctx.setLineDash([]);
 
     this.ctx.beginPath();
@@ -1485,10 +1655,10 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
     // Draw green circle at handle position
     this.ctx.fillStyle = '#00ff00'; // Green fill
     this.ctx.strokeStyle = '#ffffff'; // White border
-    this.ctx.lineWidth = 1;
+    this.ctx.lineWidth = 1 / zoom;
 
     this.ctx.beginPath();
-    this.ctx.arc(handlePos.x, handlePos.y, this.rotationHandleSize, 0, 2 * Math.PI);
+    this.ctx.arc(handlePos.x, handlePos.y, this.rotationHandleSize / zoom, 0, 2 * Math.PI);
     this.ctx.fill();
     this.ctx.stroke();
   }
@@ -1578,7 +1748,8 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
     const distance = Math.sqrt(
       Math.pow(point.x - handlePoint.x, 2) + Math.pow(point.y - handlePoint.y, 2)
     );
-    return distance <= this.handleSize;
+    const zoom = this.appStore.zoom();
+    return distance <= this.handleSize / zoom;
   }
 
   /**
@@ -1591,6 +1762,9 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
     const entity = this.getEntityData(selected);
     if (!entity) return null;
 
+    const zoom = this.appStore.zoom();
+    const handleOffset = 30 / zoom; // Keep handle at constant screen distance
+
     // Calculate the center and top-middle point of the entity
     if (selected.type === 'line') {
       const line = entity as Line;
@@ -1598,7 +1772,7 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
       const centerX = (line.start.x + line.end.x) / 2;
       const centerY = (line.start.y + line.end.y) / 2;
       const center = { x: centerX, y: centerY };
-      const handlePos = { x: centerX, y: centerY - 30 }; // 30 pixels above center
+      const handlePos = { x: centerX, y: centerY - handleOffset };
 
       // Apply rotation to the handle position
       if (line.rotation) {
@@ -1613,7 +1787,7 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
       const centerY = rectangle.start.y + height / 2;
       const center = { x: centerX, y: centerY };
       const minY = Math.min(rectangle.start.y, rectangle.end.y);
-      const handlePos = { x: centerX, y: minY - 30 }; // 30 pixels above top edge
+      const handlePos = { x: centerX, y: minY - handleOffset };
 
       // Apply rotation to the handle position
       if (rectangle.rotation) {
@@ -1622,7 +1796,7 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
       return handlePos;
     } else if (selected.type === 'circle') {
       const circle = entity as Circle;
-      const handlePos = { x: circle.center.x, y: circle.center.y - circle.radius - 30 }; // 30 pixels above top of circle
+      const handlePos = { x: circle.center.x, y: circle.center.y - circle.radius - handleOffset };
 
       // Apply rotation to the handle position
       if (circle.rotation) {
@@ -1644,7 +1818,8 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
     const distance = Math.sqrt(
       Math.pow(point.x - handlePos.x, 2) + Math.pow(point.y - handlePos.y, 2)
     );
-    return distance <= this.rotationHandleSize;
+    const zoom = this.appStore.zoom();
+    return distance <= this.rotationHandleSize / zoom;
   }
 
   /**
@@ -2076,6 +2251,7 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
   private drawAnchorPoints() {
     if (!this.ctx || !this.showAnchorPoints()) return;
 
+    const zoom = this.appStore.zoom();
     const selectedEntity = this.selectedEntity();
     const hoveredAnchors = this.hoveredAnchorPoints();
     const currentSnapPoint = this.currentSnapPoint();
@@ -2089,7 +2265,7 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
 
       this.ctx.fillStyle = '#ff6b35'; // Orange for selected entity anchors
       this.ctx.strokeStyle = '#ffffff';
-      this.ctx.lineWidth = 1;
+      this.ctx.lineWidth = 1 / zoom;
 
       selectedEntityAnchors.forEach(anchor => {
         this.drawAnchorPoint(anchor.point);
@@ -2106,15 +2282,15 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
             // Draw the anchor point in blue for hover state
             this.ctx.fillStyle = '#007bff'; // Blue for hovered anchor point
             this.ctx.strokeStyle = '#ffffff';
-            this.ctx.lineWidth = 1;
+            this.ctx.lineWidth = 1 / zoom;
             this.drawAnchorPoint(anchor.point);
 
             // Draw a larger blue circle around the hovered anchor point
             this.ctx.strokeStyle = '#007bff';
-            this.ctx.lineWidth = 2;
+            this.ctx.lineWidth = 2 / zoom;
             this.ctx.setLineDash([]);
 
-            const radius = 6;
+            const radius = 6 / zoom;
             this.ctx.beginPath();
             this.ctx.arc(anchor.point.x, anchor.point.y, radius, 0, 2 * Math.PI);
             this.ctx.stroke();
@@ -2130,7 +2306,8 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
   private drawAnchorPoint(point: Point) {
     if (!this.ctx) return;
 
-    const size = this.anchorPointSize;
+    const zoom = this.appStore.zoom();
+    const size = this.anchorPointSize / zoom;
     const halfSize = size / 2;
 
     // Draw small square for anchor point
@@ -2144,27 +2321,28 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
   private drawSnapIndicator() {
     if (!this.ctx) return;
 
+    const zoom = this.appStore.zoom();
     const snapPoint = this.currentSnapPoint();
     if (!snapPoint) return;
 
     // Draw the anchor point in green for snapped state
     this.ctx.fillStyle = '#00ff00'; // Green for snapped anchor point
     this.ctx.strokeStyle = '#ffffff';
-    this.ctx.lineWidth = 1;
+    this.ctx.lineWidth = 1 / zoom;
     this.drawAnchorPoint(snapPoint.point);
 
     // Draw a larger highlight circle around the snap point
     this.ctx.strokeStyle = '#00ff00';
-    this.ctx.lineWidth = 2;
+    this.ctx.lineWidth = 2 / zoom;
     this.ctx.setLineDash([]);
 
-    const radius = 8;
+    const radius = 8 / zoom;
     this.ctx.beginPath();
     this.ctx.arc(snapPoint.point.x, snapPoint.point.y, radius, 0, 2 * Math.PI);
     this.ctx.stroke();
 
     // Draw cross hair
-    const crossSize = 12;
+    const crossSize = 12 / zoom;
     this.ctx.beginPath();
     this.ctx.moveTo(snapPoint.point.x - crossSize, snapPoint.point.y);
     this.ctx.lineTo(snapPoint.point.x + crossSize, snapPoint.point.y);

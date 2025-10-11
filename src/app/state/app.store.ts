@@ -14,6 +14,8 @@ type AppState = {
     mousePosition: Point;
     clipboardEntity: ClipboardEntity | null;
     deletedEntities: DeletedEntity[];
+    zoom: number;
+    panOffset: Point;
 };
 
 
@@ -22,7 +24,9 @@ const initialState: AppState = {
     orthoEnabled: true,
     mousePosition: {x: 0, y: 0},
     clipboardEntity: null,
-    deletedEntities: []
+    deletedEntities: [],
+    zoom: 1.0,
+    panOffset: {x: 0, y: 0}
 };
 
 export const AppStore = signalStore(
@@ -75,6 +79,25 @@ export const AppStore = signalStore(
                     deletedEntities: trimmed
                 };
             })
+        },
+        setZoom(zoom: number): void {
+            // Clamp zoom between 0.1x and 10x
+            const clampedZoom = Math.max(0.1, Math.min(10, zoom));
+            patchState(store, (state) => ({
+                ...state, zoom: clampedZoom
+            }))
+        },
+        setPanOffset(panOffset: Point): void {
+            patchState(store, (state) => ({
+                ...state, panOffset
+            }))
+        },
+        resetView(): void {
+            patchState(store, (state) => ({
+                ...state,
+                zoom: 1.0,
+                panOffset: {x: 0, y: 0}
+            }))
         }
     }))
 )

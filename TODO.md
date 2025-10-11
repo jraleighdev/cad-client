@@ -60,7 +60,12 @@
 ## Grid Layout
 
 - [x] The grid cordinate system origin should be the bottom left corner. Currently the origin is the top left corner.  
- 
+
+## Pan and Zoom
+
+- [X] The user should be able pan around the canvas and zoom in and out.
+- [X] The user should be able to click the center mouse wheel to pan. 
+
 ## Commands
 
 ## Tool Bar Features
