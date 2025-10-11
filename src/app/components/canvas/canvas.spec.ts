@@ -21,13 +21,18 @@ describe('CanvasComponent', () => {
       mousePosition: signal({ x: 0, y: 0 }),
       clipboardEntity: signal(null),
       deletedEntities: signal([]),
+      zoom: signal(1.0),
+      panOffset: signal({ x: 0, y: 0 }),
       toggleSnap: jasmine.createSpy('toggleSnap'),
       toggleOrtho: jasmine.createSpy('toggleOrtho'),
       updateMousePosition: jasmine.createSpy('updateMousePosition'),
       copyEntity: jasmine.createSpy('copyEntity'),
       clearClipboard: jasmine.createSpy('clearClipboard'),
       addDeletedEntity: jasmine.createSpy('addDeletedEntity'),
-      addDeletedEntities: jasmine.createSpy('addDeletedEntities')
+      addDeletedEntities: jasmine.createSpy('addDeletedEntities'),
+      setZoom: jasmine.createSpy('setZoom'),
+      setPanOffset: jasmine.createSpy('setPanOffset'),
+      resetView: jasmine.createSpy('resetView')
     };
 
     await TestBed.configureTestingModule({

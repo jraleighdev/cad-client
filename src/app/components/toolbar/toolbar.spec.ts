@@ -35,7 +35,7 @@ describe('ToolbarComponent', () => {
 
     it('should render tool groups', () => {
       const toolGroups = compiled.querySelectorAll('.tool-group');
-      expect(toolGroups.length).toBe(2);
+      expect(toolGroups.length).toBe(3);
     });
 
     it('should render tool separator', () => {
@@ -393,7 +393,7 @@ describe('ToolbarComponent', () => {
       expect(toolbar).toBeTruthy();
 
       const toolGroups = toolbar?.querySelectorAll('.tool-group');
-      expect(toolGroups?.length).toBe(2);
+      expect(toolGroups?.length).toBe(3);
 
       const separator = toolbar?.querySelector('.tool-separator');
       expect(separator).toBeTruthy();
