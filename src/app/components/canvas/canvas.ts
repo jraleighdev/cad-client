@@ -1,7 +1,7 @@
 import { Component, ChangeDetectionStrategy, signal, ElementRef, ViewChild, AfterViewInit, OnDestroy, inject, output } from '@angular/core';
 import { EntityProperties, EntityPropertyCalculator, PropertyUpdate } from '../../types/entity-properties';
 import { AnchorPoint, AnchorPointCalculator, SnapResult } from '../../types/anchor-points';
-import { Line, Rectangle, Circle, Point } from '../../types/geometry';
+import { Line, Rectangle, Circle, Point, LinearDimension } from '../../types/geometry';
 import { AppStore } from '../../state/app.store';
 
 @Component({
@@ -22,9 +22,11 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
   protected readonly lines = signal<Line[]>([]);
   protected readonly rectangles = signal<Rectangle[]>([]);
   protected readonly circles = signal<Circle[]>([]);
+  protected readonly dimensions = signal<LinearDimension[]>([]);
   protected readonly currentLine = signal<Partial<Line> | null>(null);
   protected readonly currentRectangle = signal<Partial<Rectangle> | null>(null);
   protected readonly currentCircle = signal<Partial<Circle> | null>(null);
+  protected readonly currentDimension = signal<Partial<LinearDimension> | null>(null);
   
   // Selection state
   protected readonly selectedEntity = signal<{type: 'line' | 'rectangle' | 'circle', id: string} | null>(null);
@@ -56,6 +58,9 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
   // Pan state
   protected readonly isPanning = signal(false);
   protected readonly panStartPoint = signal<Point | null>(null);
+
+  // Dimension placement state
+  protected readonly dimensionPlacementStep = signal<number>(0); // 0: none, 1: start set, 2: end set (adjusting offset)
 
   // Cursor tracking for paste operations
   private lastCursorPosition = signal<Point | null>(null);
@@ -165,9 +170,32 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
         this.appStore.resetView();
         this.redrawCanvas();
       }
+      // Escape to cancel current operation
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        this.cancelCurrentOperation();
+      }
     };
 
     document.addEventListener('keydown', this.keyboardListener);
+  }
+
+  private cancelCurrentOperation() {
+    // Cancel dimension placement
+    if (this.currentTool() === 'dimension') {
+      this.currentDimension.set(null);
+      this.dimensionPlacementStep.set(0);
+    }
+
+    // Cancel other drawing operations
+    this.currentLine.set(null);
+    this.currentRectangle.set(null);
+    this.currentCircle.set(null);
+    this.isDrawing.set(false);
+    this.startPoint = null;
+    this.currentSnapPoint.set(null);
+
+    this.redrawCanvas();
   }
 
   private setupWheelListener() {
@@ -373,7 +401,7 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
         this.selectionBoxEnd.set(point);
         this.startPoint = point;
       }
-    } else if (tool === 'line' || tool === 'rectangle' || tool === 'circle') {
+    } else if (tool === 'line' || tool === 'rectangle' || tool === 'circle' || tool === 'dimension') {
       // Handle drawing tools with snapping
       const snapResult = this.applySnapping(point);
       const snappedPoint = snapResult.snapPoint;
@@ -408,6 +436,45 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
           fillColor: 'transparent'
         };
         this.currentCircle.set(newCircle);
+      } else if (tool === 'dimension') {
+        // Dimension tool has multi-step placement
+        const step = this.dimensionPlacementStep();
+
+        if (step === 0) {
+          // First click: set start point
+          const newDimension: Partial<LinearDimension> = {
+            id: Date.now().toString(),
+            start: snappedPoint,
+            color: '#000000',
+            textSize: 12,
+            offset: 20 // Default offset from the line
+          };
+          this.currentDimension.set(newDimension);
+          this.dimensionPlacementStep.set(1);
+          this.isDrawing.set(true);
+        } else if (step === 1) {
+          // Second click: set end point, move to offset adjustment
+          this.currentDimension.update(dim => dim ? { ...dim, end: snappedPoint } : dim);
+          this.dimensionPlacementStep.set(2);
+          // Keep isDrawing true to continue showing preview
+        } else if (step === 2) {
+          // Third click: finalize dimension (handled here, not in onMouseUp)
+          const currentDim = this.currentDimension();
+          if (currentDim && currentDim.start && currentDim.end) {
+            const completedDimension: LinearDimension = {
+              id: currentDim.id || Date.now().toString(),
+              start: currentDim.start,
+              end: currentDim.end,
+              color: currentDim.color || '#000000',
+              textSize: currentDim.textSize || 12,
+              offset: currentDim.offset || 20
+            };
+            this.dimensions.update(dimensions => [...dimensions, completedDimension]);
+            this.currentDimension.set(null);
+            this.dimensionPlacementStep.set(0);
+            this.isDrawing.set(false);
+          }
+        }
       }
     }
   }
@@ -538,6 +605,21 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
           Math.pow(snappedPoint.x - this.startPoint.x, 2) + Math.pow(snappedPoint.y - this.startPoint.y, 2)
         );
         this.currentCircle.update(circle => circle ? { ...circle, radius } : circle);
+      } else if (tool === 'dimension') {
+        const step = this.dimensionPlacementStep();
+
+        if (step === 1) {
+          // Moving to set end point
+          this.currentDimension.update(dim => dim ? { ...dim, end: snappedPoint } : dim);
+        } else if (step === 2) {
+          // Adjusting offset based on mouse position
+          const currentDim = this.currentDimension();
+          if (currentDim && currentDim.start && currentDim.end) {
+            // Calculate perpendicular offset from mouse position to the dimension line
+            const offset = this.calculateDimensionOffset(currentDim.start, currentDim.end, point);
+            this.currentDimension.update(dim => dim ? { ...dim, offset } : dim);
+          }
+        }
       }
 
       this.redrawCanvas();
@@ -685,10 +767,13 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
         this.circles.update(circles => [...circles, completedCircle]);
         this.currentCircle.set(null);
       }
-      
-      this.isDrawing.set(false);
-      this.startPoint = null;
-      this.currentSnapPoint.set(null);
+
+      // Reset drawing state for completed drawings (non-dimension tools)
+      if (tool !== 'dimension') {
+        this.isDrawing.set(false);
+        this.startPoint = null;
+        this.currentSnapPoint.set(null);
+      }
     }
     
     this.redrawCanvas();
@@ -700,6 +785,7 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
     const currentLine = this.currentLine();
     const currentRectangle = this.currentRectangle();
     const currentCircle = this.currentCircle();
+    const currentDimension = this.currentDimension();
 
     if (currentLine && currentLine.start && currentLine.end) {
       this.drawPreviewLine(currentLine.start, currentLine.end);
@@ -707,6 +793,8 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
       this.drawPreviewRectangle(currentRectangle.start, currentRectangle.end);
     } else if (currentCircle && currentCircle.center && currentCircle.radius !== undefined) {
       this.drawPreviewCircleByRadius(currentCircle.center, currentCircle.radius);
+    } else if (currentDimension && currentDimension.start && currentDimension.end) {
+      this.drawPreviewDimension(currentDimension.start, currentDimension.end, currentDimension.offset || 20);
     }
   }
 
@@ -800,6 +888,19 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
     this.ctx.setLineDash([]);
   }
 
+  private drawPreviewDimension(start: Point, end: Point, offset: number) {
+    if (!this.ctx) return;
+
+    const zoom = this.appStore.zoom();
+    this.ctx.strokeStyle = '#000000';
+    this.ctx.lineWidth = 1 / zoom;
+    this.ctx.setLineDash([5 / zoom, 5 / zoom]);
+
+    this.drawDimensionGeometry(start, end, offset, '#000000', 12);
+
+    this.ctx.setLineDash([]);
+  }
+
   private redrawCanvas() {
     if (!this.ctx) return;
 
@@ -819,6 +920,7 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
     this.drawAllLines();
     this.drawAllRectangles();
     this.drawAllCircles();
+    this.drawAllDimensions();
     this.drawCurrentPreview();
     this.drawSelectionHighlight();
     this.drawSelectionBox();
@@ -925,7 +1027,153 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
     });
   }
 
+  private drawAllDimensions() {
+    if (!this.ctx) return;
+
+    this.dimensions().forEach(dimension => {
+      this.drawDimensionGeometry(dimension.start, dimension.end, dimension.offset, dimension.color, dimension.textSize);
+    });
+  }
+
+  private drawDimensionGeometry(start: Point, end: Point, offset: number, color: string, textSize: number) {
+    if (!this.ctx) return;
+
+    const zoom = this.appStore.zoom();
+
+    // Calculate the direction vector and perpendicular vector
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const length = Math.sqrt(dx * dx + dy * dy);
+
+    if (length === 0) return;
+
+    // Normalize direction vector
+    const dirX = dx / length;
+    const dirY = dy / length;
+
+    // Perpendicular vector (rotated 90 degrees)
+    const perpX = -dirY;
+    const perpY = dirX;
+
+    // Calculate offset points
+    const offsetStartX = start.x + perpX * offset;
+    const offsetStartY = start.y + perpY * offset;
+    const offsetEndX = end.x + perpX * offset;
+    const offsetEndY = end.y + perpY * offset;
+
+    // Draw extension lines
+    this.ctx.strokeStyle = color;
+    this.ctx.lineWidth = 1 / zoom;
+    this.ctx.setLineDash([]);
+
+    // Extension line from start point
+    this.ctx.beginPath();
+    this.ctx.moveTo(start.x, start.y);
+    this.ctx.lineTo(offsetStartX + perpX * 5, offsetStartY + perpY * 5);
+    this.ctx.stroke();
+
+    // Extension line from end point
+    this.ctx.beginPath();
+    this.ctx.moveTo(end.x, end.y);
+    this.ctx.lineTo(offsetEndX + perpX * 5, offsetEndY + perpY * 5);
+    this.ctx.stroke();
+
+    // Draw dimension line
+    this.ctx.beginPath();
+    this.ctx.moveTo(offsetStartX, offsetStartY);
+    this.ctx.lineTo(offsetEndX, offsetEndY);
+    this.ctx.stroke();
+
+    // Draw arrows
+    const arrowSize = 10 / zoom;
+    this.drawArrow(offsetStartX, offsetStartY, dirX, dirY, arrowSize, color);
+    this.drawArrow(offsetEndX, offsetEndY, -dirX, -dirY, arrowSize, color);
+
+    // Draw text
+    const midX = (offsetStartX + offsetEndX) / 2;
+    const midY = (offsetStartY + offsetEndY) / 2;
+
+    this.ctx.save();
+    this.ctx.translate(midX, midY);
+
+    // Calculate angle for text rotation
+    let angle = Math.atan2(dy, dx);
+    // Keep text upright
+    if (angle > Math.PI / 2 || angle < -Math.PI / 2) {
+      angle += Math.PI;
+    }
+    this.ctx.rotate(angle);
+
+    // Scale text to maintain constant size
+    this.ctx.scale(1 / zoom, 1 / zoom);
+
+    this.ctx.font = `${textSize}px Arial`;
+    this.ctx.fillStyle = color;
+    this.ctx.textAlign = 'center';
+    this.ctx.textBaseline = 'bottom';
+
+    const dimensionText = length.toFixed(1);
+    this.ctx.fillText(dimensionText, 0, -3);
+
+    this.ctx.restore();
+  }
+
+  private drawArrow(x: number, y: number, dirX: number, dirY: number, size: number, color: string) {
+    if (!this.ctx) return;
+
+    const zoom = this.appStore.zoom();
+
+    // Arrow head points
+    const angle = 25 * (Math.PI / 180); // 25 degree arrow
+
+    const leftX = x - size * (dirX * Math.cos(angle) - dirY * Math.sin(angle));
+    const leftY = y - size * (dirX * Math.sin(angle) + dirY * Math.cos(angle));
+
+    const rightX = x - size * (dirX * Math.cos(-angle) - dirY * Math.sin(-angle));
+    const rightY = y - size * (dirX * Math.sin(-angle) + dirY * Math.cos(-angle));
+
+    this.ctx.fillStyle = color;
+    this.ctx.beginPath();
+    this.ctx.moveTo(x, y);
+    this.ctx.lineTo(leftX, leftY);
+    this.ctx.lineTo(rightX, rightY);
+    this.ctx.closePath();
+    this.ctx.fill();
+  }
+
+  /**
+   * Calculate the perpendicular offset distance from a point to a line
+   * Returns signed distance (positive/negative indicates which side)
+   */
+  private calculateDimensionOffset(start: Point, end: Point, mousePoint: Point): number {
+    // Direction vector
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const length = Math.sqrt(dx * dx + dy * dy);
+
+    if (length === 0) return 20; // Default offset
+
+    // Normalize direction vector
+    const dirX = dx / length;
+    const dirY = dy / length;
+
+    // Perpendicular vector (rotated 90 degrees)
+    const perpX = -dirY;
+    const perpY = dirX;
+
+    // Vector from start to mouse
+    const toMouseX = mousePoint.x - start.x;
+    const toMouseY = mousePoint.y - start.y;
+
+    // Project onto perpendicular vector to get signed distance
+    const offset = toMouseX * perpX + toMouseY * perpY;
+
+    return offset;
+  }
+
   setTool(tool: string) {
+    // Cancel any ongoing operations when switching tools
+    this.cancelCurrentOperation();
     this.currentTool.set(tool);
   }
 

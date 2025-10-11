@@ -70,6 +70,12 @@ export class App {
     }
   }
 
+  protected onSelectDimensionTool() {
+    if (this.canvasComponent) {
+      this.canvasComponent.setTool('dimension');
+    }
+  }
+
   protected get hasSelectedEntity(): boolean {
     return this.selectedEntityProperties() !== null;
   }

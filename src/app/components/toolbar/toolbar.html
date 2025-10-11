@@ -27,6 +27,15 @@
   </div>
   <div class="tool-separator"></div>
   <div class="tool-group">
+    <button class="tool-button"
+            [class.active]="selectedTool() === 'dimension'"
+            (click)="selectTool('dimension')"
+            title="Linear Dimension Tool">
+      <span class="tool-icon">↔</span>
+    </button>
+  </div>
+  <div class="tool-separator"></div>
+  <div class="tool-group">
     <button class="tool-button" title="Zoom In">
       <span class="tool-icon">+</span>
     </button>

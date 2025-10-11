@@ -12,6 +12,7 @@ export class HeaderComponent {
   private appStore = inject(AppStore);
 
   protected readonly editMenuOpen = signal(false);
+  protected readonly dimensionMenuOpen = signal(false);
 
   hasSelectedEntity = input<boolean>(false);
   isSelectedEntityFrozen = input<boolean>(false);
@@ -21,6 +22,7 @@ export class HeaderComponent {
   delete = output<void>();
   freeze = output<void>();
   unfreeze = output<void>();
+  selectDimensionTool = output<void>();
 
   protected get hasClipboardContent(): boolean {
     return this.appStore.clipboardEntity() !== null;
@@ -57,5 +59,18 @@ export class HeaderComponent {
   protected onUnfreeze() {
     this.unfreeze.emit();
     this.closeEditMenu();
+  }
+
+  protected toggleDimensionMenu() {
+    this.dimensionMenuOpen.update(isOpen => !isOpen);
+  }
+
+  protected closeDimensionMenu() {
+    this.dimensionMenuOpen.set(false);
+  }
+
+  protected onSelectDimensionTool() {
+    this.selectDimensionTool.emit();
+    this.closeDimensionMenu();
   }
 }

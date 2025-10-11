@@ -17,6 +17,14 @@
         }
       </div>
       <button class="nav-button">View</button>
+      <div class="dropdown">
+        <button class="nav-button" (click)="toggleDimensionMenu()">Dimensions</button>
+        @if (dimensionMenuOpen()) {
+          <div class="dropdown-menu">
+            <button class="dropdown-item" (click)="onSelectDimensionTool()">Linear Dimension</button>
+          </div>
+        }
+      </div>
       <button class="nav-button">Tools</button>
       <button class="nav-button">Help</button>
     </nav>

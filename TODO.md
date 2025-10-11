@@ -64,7 +64,15 @@
 ## Pan and Zoom
 
 - [X] The user should be able pan around the canvas and zoom in and out.
-- [X] The user should be able to click the center mouse wheel to pan. 
+- [X] The user should be able to click the center mouse wheel to pan.
+
+## Linear Dimensions
+
+- [X] The user should be add dimensions between anchor points.
+- [X] Dimensions should be aligned along the axis of the two anchor points.
+- [X] Lets add button section group to the tool bar for dimensions.
+- [X] In the header lets add a drop for dimensions.
+- [X] Under the drop down add Linear dimension.
 
 ## Commands
 
