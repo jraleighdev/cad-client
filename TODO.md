@@ -74,6 +74,13 @@
 - [X] In the header lets add a drop for dimensions.
 - [X] Under the drop down add Linear dimension.
 
+## Diameter and Radius Dimensions
+
+-[X] The user should be able to add dimensions to arcs and circles by selecting it.
+-[X] The dimension should point at the arc or cirlc its attached to.
+-[X] Under the dimensions section add two buttons one for radius and one for diameter.
+-[X] In the header the under the dimensions tab add radial and diameter dimensions
+
 ## Commands
 
 ## Tool Bar Features

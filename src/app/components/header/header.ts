@@ -23,6 +23,8 @@ export class HeaderComponent {
   freeze = output<void>();
   unfreeze = output<void>();
   selectDimensionTool = output<void>();
+  selectRadiusTool = output<void>();
+  selectDiameterTool = output<void>();
 
   protected get hasClipboardContent(): boolean {
     return this.appStore.clipboardEntity() !== null;
@@ -71,6 +73,16 @@ export class HeaderComponent {
 
   protected onSelectDimensionTool() {
     this.selectDimensionTool.emit();
+    this.closeDimensionMenu();
+  }
+
+  protected onSelectRadiusTool() {
+    this.selectRadiusTool.emit();
+    this.closeDimensionMenu();
+  }
+
+  protected onSelectDiameterTool() {
+    this.selectDiameterTool.emit();
     this.closeDimensionMenu();
   }
 }

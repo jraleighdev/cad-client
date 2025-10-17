@@ -76,6 +76,18 @@ export class App {
     }
   }
 
+  protected onSelectRadiusTool() {
+    if (this.canvasComponent) {
+      this.canvasComponent.setTool('radius');
+    }
+  }
+
+  protected onSelectDiameterTool() {
+    if (this.canvasComponent) {
+      this.canvasComponent.setTool('diameter');
+    }
+  }
+
   protected get hasSelectedEntity(): boolean {
     return this.selectedEntityProperties() !== null;
   }

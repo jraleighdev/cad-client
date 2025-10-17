@@ -33,6 +33,18 @@
             title="Linear Dimension Tool">
       <span class="tool-icon">↔</span>
     </button>
+    <button class="tool-button"
+            [class.active]="selectedTool() === 'radius'"
+            (click)="selectTool('radius')"
+            title="Radius Dimension Tool">
+      <span class="tool-icon">R</span>
+    </button>
+    <button class="tool-button"
+            [class.active]="selectedTool() === 'diameter'"
+            (click)="selectTool('diameter')"
+            title="Diameter Dimension Tool">
+      <span class="tool-icon">⌀</span>
+    </button>
   </div>
   <div class="tool-separator"></div>
   <div class="tool-group">

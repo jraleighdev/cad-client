@@ -44,3 +44,25 @@ export interface LinearDimension {
   textSize: number; // Font size for dimension text
   frozen?: boolean; // If true, entity cannot be moved or resized
 }
+
+export interface RadialDimension {
+  id: string;
+  circleId: string; // ID of the circle being dimensioned
+  center: Point; // Center of the circle
+  radius: number; // Radius of the circle
+  angle: number; // Angle at which to place the dimension (in degrees)
+  color: string;
+  textSize: number; // Font size for dimension text
+  frozen?: boolean; // If true, entity cannot be moved or resized
+}
+
+export interface DiameterDimension {
+  id: string;
+  circleId: string; // ID of the circle being dimensioned
+  center: Point; // Center of the circle
+  diameter: number; // Diameter of the circle
+  angle: number; // Angle at which to place the dimension (in degrees)
+  color: string;
+  textSize: number; // Font size for dimension text
+  frozen?: boolean; // If true, entity cannot be moved or resized
+}

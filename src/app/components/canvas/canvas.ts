@@ -1,7 +1,7 @@
 import { Component, ChangeDetectionStrategy, signal, ElementRef, ViewChild, AfterViewInit, OnDestroy, inject, output } from '@angular/core';
 import { EntityProperties, EntityPropertyCalculator, PropertyUpdate } from '../../types/entity-properties';
 import { AnchorPoint, AnchorPointCalculator, SnapResult } from '../../types/anchor-points';
-import { Line, Rectangle, Circle, Point, LinearDimension } from '../../types/geometry';
+import { Line, Rectangle, Circle, Point, LinearDimension, RadialDimension, DiameterDimension } from '../../types/geometry';
 import { AppStore } from '../../state/app.store';
 
 @Component({
@@ -23,10 +23,14 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
   protected readonly rectangles = signal<Rectangle[]>([]);
   protected readonly circles = signal<Circle[]>([]);
   protected readonly dimensions = signal<LinearDimension[]>([]);
+  protected readonly radialDimensions = signal<RadialDimension[]>([]);
+  protected readonly diameterDimensions = signal<DiameterDimension[]>([]);
   protected readonly currentLine = signal<Partial<Line> | null>(null);
   protected readonly currentRectangle = signal<Partial<Rectangle> | null>(null);
   protected readonly currentCircle = signal<Partial<Circle> | null>(null);
   protected readonly currentDimension = signal<Partial<LinearDimension> | null>(null);
+  protected readonly currentRadialDimension = signal<Partial<RadialDimension> | null>(null);
+  protected readonly currentDiameterDimension = signal<Partial<DiameterDimension> | null>(null);
   
   // Selection state
   protected readonly selectedEntity = signal<{type: 'line' | 'rectangle' | 'circle', id: string} | null>(null);
@@ -61,6 +65,8 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
 
   // Dimension placement state
   protected readonly dimensionPlacementStep = signal<number>(0); // 0: none, 1: start set, 2: end set (adjusting offset)
+  protected readonly radialDimensionPlacementStep = signal<number>(0); // 0: none, 1: circle selected, waiting for text position
+  protected readonly diameterDimensionPlacementStep = signal<number>(0); // 0: none, 1: circle selected, waiting for text position
 
   // Cursor tracking for paste operations
   private lastCursorPosition = signal<Point | null>(null);
@@ -401,6 +407,104 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
         this.selectionBoxEnd.set(point);
         this.startPoint = point;
       }
+    } else if (tool === 'radius') {
+      // Radius tool: two-step process
+      const step = this.radialDimensionPlacementStep();
+
+      if (step === 0) {
+        // First click: select a circle
+        const entity = this.findEntityAtPoint(point);
+
+        if (entity && entity.type === 'circle') {
+          const circle = this.circles().find(c => c.id === entity.id);
+          if (circle) {
+            // Store partial dimension with circle info
+            const newRadialDimension: Partial<RadialDimension> = {
+              id: Date.now().toString(),
+              circleId: circle.id,
+              center: circle.center,
+              radius: circle.radius,
+              angle: 0, // Will be set based on text position
+              color: '#000000',
+              textSize: 12
+            };
+            this.currentRadialDimension.set(newRadialDimension);
+            this.radialDimensionPlacementStep.set(1);
+          }
+        }
+      } else if (step === 1) {
+        // Second click: place text position
+        const currentDim = this.currentRadialDimension();
+        if (currentDim && currentDim.center && currentDim.radius !== undefined) {
+          // Calculate angle based on text placement position
+          const dx = point.x - currentDim.center.x;
+          const dy = point.y - currentDim.center.y;
+          const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+
+          const completedDimension: RadialDimension = {
+            id: currentDim.id || Date.now().toString(),
+            circleId: currentDim.circleId || '',
+            center: currentDim.center,
+            radius: currentDim.radius,
+            angle: angle,
+            color: currentDim.color || '#000000',
+            textSize: currentDim.textSize || 12
+          };
+          this.radialDimensions.update(dims => [...dims, completedDimension]);
+          this.currentRadialDimension.set(null);
+          this.radialDimensionPlacementStep.set(0);
+          this.redrawCanvas();
+        }
+      }
+    } else if (tool === 'diameter') {
+      // Diameter tool: two-step process
+      const step = this.diameterDimensionPlacementStep();
+
+      if (step === 0) {
+        // First click: select a circle
+        const entity = this.findEntityAtPoint(point);
+
+        if (entity && entity.type === 'circle') {
+          const circle = this.circles().find(c => c.id === entity.id);
+          if (circle) {
+            // Store partial dimension with circle info
+            const newDiameterDimension: Partial<DiameterDimension> = {
+              id: Date.now().toString(),
+              circleId: circle.id,
+              center: circle.center,
+              diameter: circle.radius * 2,
+              angle: 0, // Will be set based on text position
+              color: '#000000',
+              textSize: 12
+            };
+            this.currentDiameterDimension.set(newDiameterDimension);
+            this.diameterDimensionPlacementStep.set(1);
+          }
+        }
+      } else if (step === 1) {
+        // Second click: place text position
+        const currentDim = this.currentDiameterDimension();
+        if (currentDim && currentDim.center && currentDim.diameter !== undefined) {
+          // Calculate angle based on text placement position
+          const dx = point.x - currentDim.center.x;
+          const dy = point.y - currentDim.center.y;
+          const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+
+          const completedDimension: DiameterDimension = {
+            id: currentDim.id || Date.now().toString(),
+            circleId: currentDim.circleId || '',
+            center: currentDim.center,
+            diameter: currentDim.diameter,
+            angle: angle,
+            color: currentDim.color || '#000000',
+            textSize: currentDim.textSize || 12
+          };
+          this.diameterDimensions.update(dims => [...dims, completedDimension]);
+          this.currentDiameterDimension.set(null);
+          this.diameterDimensionPlacementStep.set(0);
+          this.redrawCanvas();
+        }
+      }
     } else if (tool === 'line' || tool === 'rectangle' || tool === 'circle' || tool === 'dimension') {
       // Handle drawing tools with snapping
       const snapResult = this.applySnapping(point);
@@ -586,7 +690,7 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
       const snapResult = this.applySnapping(point);
       let snappedPoint = snapResult.snapPoint;
 
-      // Apply ortho constraint after snapping for line tool
+      // Get current tool for handling different drawing modes
       const tool = this.currentTool();
       if (tool === 'line') {
         snappedPoint = this.applyOrthoConstraint(this.startPoint, snappedPoint);
@@ -623,7 +727,41 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
       }
 
       this.redrawCanvas();
-    } else {
+    }
+
+    // Handle radius dimension placement preview (not part of isDrawing)
+    const tool = this.currentTool();
+    if (tool === 'radius') {
+      const step = this.radialDimensionPlacementStep();
+
+      if (step === 1) {
+        // Update angle based on mouse position for text placement
+        const currentDim = this.currentRadialDimension();
+        if (currentDim && currentDim.center) {
+          const dx = point.x - currentDim.center.x;
+          const dy = point.y - currentDim.center.y;
+          const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+          this.currentRadialDimension.update(dim => dim ? { ...dim, angle } : dim);
+          this.redrawCanvas();
+        }
+      }
+    } else if (tool === 'diameter') {
+      const step = this.diameterDimensionPlacementStep();
+
+      if (step === 1) {
+        // Update angle based on mouse position for text placement
+        const currentDim = this.currentDiameterDimension();
+        if (currentDim && currentDim.center) {
+          const dx = point.x - currentDim.center.x;
+          const dy = point.y - currentDim.center.y;
+          const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+          this.currentDiameterDimension.update(dim => dim ? { ...dim, angle } : dim);
+          this.redrawCanvas();
+        }
+      }
+    }
+
+    if (!this.isDrawing() && !this.isDragging() && !this.isResizing() && !this.isRotating() && !this.isPanning() && !this.isDrawingSelectionBox()) {
       // Update cursor when hovering over handles (not dragging/resizing/rotating)
       if (this.isPointNearRotationHandle(point)) {
         this.setCanvasCursor('grab');
@@ -786,6 +924,8 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
     const currentRectangle = this.currentRectangle();
     const currentCircle = this.currentCircle();
     const currentDimension = this.currentDimension();
+    const currentRadialDimension = this.currentRadialDimension();
+    const currentDiameterDimension = this.currentDiameterDimension();
 
     if (currentLine && currentLine.start && currentLine.end) {
       this.drawPreviewLine(currentLine.start, currentLine.end);
@@ -795,6 +935,28 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
       this.drawPreviewCircleByRadius(currentCircle.center, currentCircle.radius);
     } else if (currentDimension && currentDimension.start && currentDimension.end) {
       this.drawPreviewDimension(currentDimension.start, currentDimension.end, currentDimension.offset || 20);
+    } else if (currentRadialDimension && currentRadialDimension.center && currentRadialDimension.radius !== undefined && currentRadialDimension.angle !== undefined) {
+      const previewDim: RadialDimension = {
+        id: currentRadialDimension.id || '',
+        circleId: currentRadialDimension.circleId || '',
+        center: currentRadialDimension.center,
+        radius: currentRadialDimension.radius,
+        angle: currentRadialDimension.angle,
+        color: '#000000',
+        textSize: 12
+      };
+      this.drawRadialDimensionGeometry(previewDim);
+    } else if (currentDiameterDimension && currentDiameterDimension.center && currentDiameterDimension.diameter !== undefined && currentDiameterDimension.angle !== undefined) {
+      const previewDim: DiameterDimension = {
+        id: currentDiameterDimension.id || '',
+        circleId: currentDiameterDimension.circleId || '',
+        center: currentDiameterDimension.center,
+        diameter: currentDiameterDimension.diameter,
+        angle: currentDiameterDimension.angle,
+        color: '#000000',
+        textSize: 12
+      };
+      this.drawDiameterDimensionGeometry(previewDim);
     }
   }
 
@@ -921,6 +1083,8 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
     this.drawAllRectangles();
     this.drawAllCircles();
     this.drawAllDimensions();
+    this.drawAllRadialDimensions();
+    this.drawAllDiameterDimensions();
     this.drawCurrentPreview();
     this.drawSelectionHighlight();
     this.drawSelectionBox();
@@ -1033,6 +1197,112 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
     this.dimensions().forEach(dimension => {
       this.drawDimensionGeometry(dimension.start, dimension.end, dimension.offset, dimension.color, dimension.textSize);
     });
+  }
+
+  private drawAllRadialDimensions() {
+    if (!this.ctx) return;
+
+    this.radialDimensions().forEach(dimension => {
+      this.drawRadialDimensionGeometry(dimension);
+    });
+  }
+
+  private drawAllDiameterDimensions() {
+    if (!this.ctx) return;
+
+    this.diameterDimensions().forEach(dimension => {
+      this.drawDiameterDimensionGeometry(dimension);
+    });
+  }
+
+  private drawRadialDimensionGeometry(dimension: RadialDimension) {
+    if (!this.ctx) return;
+
+    const zoom = this.appStore.zoom();
+    const angleRad = (dimension.angle * Math.PI) / 180;
+
+    // Calculate point on circle circumference
+    const pointX = dimension.center.x + Math.cos(angleRad) * dimension.radius;
+    const pointY = dimension.center.y + Math.sin(angleRad) * dimension.radius;
+
+    // Draw leader line from center to point on circle
+    this.ctx.strokeStyle = dimension.color;
+    this.ctx.lineWidth = 1 / zoom;
+    this.ctx.setLineDash([]);
+
+    this.ctx.beginPath();
+    this.ctx.moveTo(dimension.center.x, dimension.center.y);
+    this.ctx.lineTo(pointX, pointY);
+    this.ctx.stroke();
+
+    // Draw arrow at the circle edge
+    const arrowSize = 10 / zoom;
+    this.drawArrow(pointX, pointY, Math.cos(angleRad), Math.sin(angleRad), arrowSize, dimension.color);
+
+    // Draw text near the end of the line
+    const textX = pointX + Math.cos(angleRad) * 15 / zoom;
+    const textY = pointY + Math.sin(angleRad) * 15 / zoom;
+
+    this.ctx.save();
+    this.ctx.translate(textX, textY);
+    this.ctx.scale(1 / zoom, 1 / zoom);
+
+    this.ctx.font = `${dimension.textSize}px Arial`;
+    this.ctx.fillStyle = dimension.color;
+    this.ctx.textAlign = 'left';
+    this.ctx.textBaseline = 'middle';
+
+    const dimensionText = `R ${dimension.radius.toFixed(1)}`;
+    this.ctx.fillText(dimensionText, 0, 0);
+
+    this.ctx.restore();
+  }
+
+  private drawDiameterDimensionGeometry(dimension: DiameterDimension) {
+    if (!this.ctx) return;
+
+    const zoom = this.appStore.zoom();
+    const angleRad = (dimension.angle * Math.PI) / 180;
+    const radius = dimension.diameter / 2;
+
+    // Calculate points on opposite sides of the circle
+    const point1X = dimension.center.x - Math.cos(angleRad) * radius;
+    const point1Y = dimension.center.y - Math.sin(angleRad) * radius;
+    const point2X = dimension.center.x + Math.cos(angleRad) * radius;
+    const point2Y = dimension.center.y + Math.sin(angleRad) * radius;
+
+    // Draw leader line through the circle diameter
+    this.ctx.strokeStyle = dimension.color;
+    this.ctx.lineWidth = 1 / zoom;
+    this.ctx.setLineDash([]);
+
+    this.ctx.beginPath();
+    this.ctx.moveTo(point1X, point1Y);
+    this.ctx.lineTo(point2X, point2Y);
+    this.ctx.stroke();
+
+    // Draw arrows at both ends
+    const arrowSize = 10 / zoom;
+    this.drawArrow(point1X, point1Y, -Math.cos(angleRad), -Math.sin(angleRad), arrowSize, dimension.color);
+    this.drawArrow(point2X, point2Y, Math.cos(angleRad), Math.sin(angleRad), arrowSize, dimension.color);
+
+    // Draw text near the end of the line
+    const textX = point2X + Math.cos(angleRad) * 15 / zoom;
+    const textY = point2Y + Math.sin(angleRad) * 15 / zoom;
+
+    this.ctx.save();
+    this.ctx.translate(textX, textY);
+    this.ctx.scale(1 / zoom, 1 / zoom);
+
+    this.ctx.font = `${dimension.textSize}px Arial`;
+    this.ctx.fillStyle = dimension.color;
+    this.ctx.textAlign = 'left';
+    this.ctx.textBaseline = 'middle';
+
+    const dimensionText = `⌀ ${dimension.diameter.toFixed(1)}`;
+    this.ctx.fillText(dimensionText, 0, 0);
+
+    this.ctx.restore();
   }
 
   private drawDimensionGeometry(start: Point, end: Point, offset: number, color: string, textSize: number) {
